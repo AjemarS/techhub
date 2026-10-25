@@ -84,11 +84,12 @@ class FakeChannel:
 
 
 class GoodsReceiptRoutingTest(TestCase):
-    """A GRN publishes stock.changed and goods_received; the catalog must count it once (fix #25)."""
+    """A GRN publishes stock.changed and goods_received; the catalog counts it once (fix #25)."""
 
     def test_receipt_of_10_adds_10(self):
         product = Product.objects.create(
-            name="Kettle", category=Category.objects.create(name="Kitchen"), price=Decimal("10"), original_price=Decimal("10"), stock=50,
+            name="Kettle", category=Category.objects.create(name="Kitchen"),
+            price=Decimal("10"), original_price=Decimal("10"), stock=50,
         )
         channel = FakeChannel()
         conn = mock.Mock(channel=lambda: channel)
@@ -96,8 +97,14 @@ class GoodsReceiptRoutingTest(TestCase):
                 mock.patch("shared_eventbus.consumer.get_connection", return_value=conn):
             start_consumer()
 
-        channel.publish("inventory.stock.changed", {"event_id": str(uuid4()), "product_id": product.pk, "change": 10})
-        channel.publish("inventory.goods_received", {"event_id": str(uuid4()), "product_id": product.pk, "quantity": 10})
+        channel.publish(
+            "inventory.stock.changed",
+            {"event_id": str(uuid4()), "product_id": product.pk, "change": 10},
+        )
+        channel.publish(
+            "inventory.goods_received",
+            {"event_id": str(uuid4()), "product_id": product.pk, "quantity": 10},
+        )
 
         product.refresh_from_db()
         self.assertEqual(product.stock, 60)
@@ -109,9 +116,12 @@ class ReconcileStockTest(TestCase):
 
     def test_distorted_stock_is_restored_from_inventory(self):
         category = Category.objects.create(name="Kitchen")
-        drifted = Product.objects.create(name="Kettle", category=category, price=1, original_price=1, stock=3)
-        right = Product.objects.create(name="Toaster", category=category, price=1, original_price=1, stock=5)
-        untracked = Product.objects.create(name="Mixer", category=category, price=1, original_price=1, stock=9)
+        def make(name, stock):
+            return Product.objects.create(
+                name=name, category=category, price=1, original_price=1, stock=stock,
+            )
+
+        drifted, right, untracked = make("Kettle", 3), make("Toaster", 5), make("Mixer", 9)
         rows = [
             {"product_id": drifted.pk, "quantity": 7}, {"product_id": drifted.pk, "quantity": 4},
             {"product_id": right.pk, "quantity": 5},

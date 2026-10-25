@@ -78,7 +78,9 @@ def setup_bindings(channel):
     # Old queue bound to inventory.goods_received counted every receipt a second time
     channel.queue_delete(queue="product.catalog.update")
     channel.queue_declare(queue="product.stock.sync", durable=True)
-    channel.queue_bind(queue="product.stock.sync", exchange=EXCHANGE_NAME, routing_key="inventory.stock.changed")
+    channel.queue_bind(
+        queue="product.stock.sync", exchange=EXCHANGE_NAME, routing_key="inventory.stock.changed"
+    )
 
 
 def start_consumer():
