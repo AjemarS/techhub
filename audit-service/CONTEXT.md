@@ -72,6 +72,7 @@ Query parameters:
 | `limit` | int | Results per page (1–100, default: 50) |
 | `service` | string | Filter by service name |
 | `event_type` | string | Filter: `http_request` or `rabbitmq` |
+| `routing_key` | string | Filter by event key, e.g. `order.created` |
 | `user_id` | string | Filter by user UUID |
 | `request_id` | string | Filter by request UUID |
 | `event_id` | string | Filter by event UUID |

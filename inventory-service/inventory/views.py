@@ -355,9 +355,11 @@ class StockViewSet(viewsets.ReadOnlyModelViewSet):
             Stock.objects.filter(
                 product_id=product_id, warehouse_id=from_warehouse_id
             ).update(quantity=F("quantity") - quantity)
+            # Units carry their cost along: the destination's average is weighted by what arrives
+            dest_cost = (dest.quantity * dest.average_cost + quantity * source.average_cost) / (dest.quantity + quantity)
             Stock.objects.filter(
                 product_id=product_id, warehouse_id=to_warehouse_id
-            ).update(quantity=F("quantity") + quantity)
+            ).update(quantity=F("quantity") + quantity, average_cost=dest_cost)
 
             source.refresh_from_db()
             dest.refresh_from_db()
@@ -404,6 +406,11 @@ class StockViewSet(viewsets.ReadOnlyModelViewSet):
                 product_id=product_id, warehouse_id=warehouse_id
             )
 
+            if new_quantity < stock.reserved:
+                return Response(
+                    {"error": "Quantity cannot be below reserved", "reserved": stock.reserved, "requested": new_quantity},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             delta = new_quantity - stock.quantity
 
             Stock.objects.filter(
@@ -426,6 +433,11 @@ class StockViewSet(viewsets.ReadOnlyModelViewSet):
                 product_id, warehouse_id, delta, new_quantity,
             )
 
+            if delta:
+                transaction.on_commit(lambda: publish_event("inventory.stock.changed", {
+                    "event_id": str(uuid4()), "product_id": product_id, "warehouse_id": warehouse_id,
+                    "quantity": stock.quantity, "change": delta,
+                }))
             transaction.on_commit(
                 lambda: _check_and_publish_low_stock(
                     product_id, warehouse_id, stock.quantity,

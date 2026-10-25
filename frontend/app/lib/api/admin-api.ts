@@ -369,6 +369,28 @@ export const activityEventApi = {
   },
 };
 
+export interface AuditLogEntry {
+  id: number;
+  event_type: "rabbitmq" | "http_request";
+  routing_key: string | null;
+  service: string;
+  method: string | null;
+  path: string | null;
+  user_id: string | null;
+  status_code: number | null;
+  created_at: string;
+}
+
+export const auditApi = {
+  async list(params: { page: number; user_id?: string; event_type?: string; routing_key?: string; from?: string; to?: string }): Promise<ApiResponse<{ results: AuditLogEntry[]; total: number }>> {
+    const q = new URLSearchParams({ page: String(params.page), limit: "50" });
+    for (const key of ["user_id", "event_type", "routing_key", "from", "to"] as const) {
+      if (params[key]) q.append(key, params[key]);
+    }
+    return apiCall(`${API_URL}/audit/logs?${q}`);
+  },
+};
+
 export const returnsApi = {
   async list(params?: { status?: ReturnStatus; order?: number; page?: number }): Promise<ApiResponse<{ results: ReturnRequest[]; count: number }>> {
     const q = new URLSearchParams();

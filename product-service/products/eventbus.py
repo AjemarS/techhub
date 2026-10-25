@@ -65,37 +65,22 @@ def _handle_stock_changed(event, event_id=None):
         logger.error("Stock sync failed | product=%s error=%s", product_id, e)
 
 
-def _handle_goods_received(event, event_id=None):
-    product_id = event.get("product_id")
-    quantity = event.get("quantity", 0)
-    cost_price = event.get("cost_price", "0")
-    if not product_id:
-        logger.warning("inventory.goods_received missing product_id")
-        return
-    try:
-        _adjust_stock(product_id, quantity)
-        logger.info(
-            "Goods received processed | product=%s qty=%s cost=%s", product_id, quantity, cost_price
-        )
-    except Exception as e:
-        logger.error("Goods received failed | product=%s error=%s", product_id, e)
-
-
+# A goods receipt also publishes inventory.stock.changed, which is the one source of Product.stock;
+# inventory.goods_received stays for the audit log only
 QUEUE_MAP = {
     "product.stock.sync": with_dedup(_handle_stock_changed),
-    "product.catalog.update": with_dedup(_handle_goods_received),
 }
 
 
 def setup_bindings(channel):
     """Declare exchange and bind queues to routing keys."""
     ensure_exchange(channel)
-    for queue_name, routing_key in [
-        ("product.stock.sync", "inventory.stock.changed"),
-        ("product.catalog.update", "inventory.goods_received"),
-    ]:
-        channel.queue_declare(queue=queue_name, durable=True)
-        channel.queue_bind(queue=queue_name, exchange=EXCHANGE_NAME, routing_key=routing_key)
+    # Old queue bound to inventory.goods_received counted every receipt a second time
+    channel.queue_delete(queue="product.catalog.update")
+    channel.queue_declare(queue="product.stock.sync", durable=True)
+    channel.queue_bind(
+        queue="product.stock.sync", exchange=EXCHANGE_NAME, routing_key="inventory.stock.changed"
+    )
 
 
 def start_consumer():

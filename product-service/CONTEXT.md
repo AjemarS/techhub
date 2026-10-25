@@ -80,5 +80,5 @@ python manage.py test
 - **Run:** `python manage.py test`
 
 ## Known Issues
-- Stock consumer is wired to `inventory.stock.changed` and `inventory.goods_received` events.
+- Stock consumer is wired to `inventory.stock.changed` only: a GRN publishes it too, so also consuming `inventory.goods_received` counted receipts twice.
 - Cart in product-service, orders in order-service: checkout spans two services (no distributed transaction).

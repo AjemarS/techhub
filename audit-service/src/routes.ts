@@ -45,6 +45,7 @@ router.get("/api/audit/logs", async (req: Request, res: Response) => {
       limit,
       service: req.query.service as string | undefined,
       event_type: req.query.event_type as string | undefined,
+      routing_key: req.query.routing_key as string | undefined,
       user_id: req.query.user_id as string | undefined,
       request_id: req.query.request_id as string | undefined,
       event_id: req.query.event_id as string | undefined,

@@ -29,6 +29,7 @@ const roleRouteAccess: Record<string, string[]> = {
   "/admin/categories": ["admin"],
   "/admin/users": ["admin"],
   "/admin/reports": ["admin"],
+  "/admin/audit": ["admin"],
 };
 
 const apiOrigins = [...new Set(

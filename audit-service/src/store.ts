@@ -46,6 +46,7 @@ export interface AuditQuery {
   limit: number;
   service?: string;
   event_type?: string;
+  routing_key?: string;
   user_id?: string;
   request_id?: string;
   event_id?: string;
@@ -110,6 +111,7 @@ export async function queryEntries(q: AuditQuery): Promise<{ rows: Record<string
 
   if (q.service) { idx++; clauses.push(`service = $${idx}`); params.push(q.service); }
   if (q.event_type) { idx++; clauses.push(`event_type = $${idx}`); params.push(q.event_type); }
+  if (q.routing_key) { idx++; clauses.push(`routing_key = $${idx}`); params.push(q.routing_key); }
   if (q.user_id) { idx++; clauses.push(`user_id = $${idx}`); params.push(q.user_id); }
   if (q.request_id) { idx++; clauses.push(`request_id = $${idx}`); params.push(q.request_id); }
   if (q.event_id) { idx++; clauses.push(`event_id = $${idx}`); params.push(q.event_id); }

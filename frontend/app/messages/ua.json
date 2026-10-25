@@ -152,7 +152,8 @@
     "usersDesc": "Облікові записи та ролі",
     "returns": "Повернення",
     "purchaseOrders": "Закупівлі",
-    "promoCodes": "Промокоди"
+    "promoCodes": "Промокоди",
+    "audit": "Журнал аудиту"
   },
   "summary": {
     "title": "Огляд системи",
@@ -1737,5 +1738,23 @@
         }
       ]
     }
+  },
+  "audit": {
+    "title": "Журнал аудиту",
+    "subtitle": "Хто, що й коли зробив у всіх сервісах",
+    "userId": "ID користувача",
+    "type": "Тип",
+    "allTypes": "Усі",
+    "type_http_request": "HTTP-запит",
+    "type_rabbitmq": "Подія",
+    "action": "Ключ події",
+    "actionPlaceholder": "напр. order.created",
+    "date": "Дата",
+    "service": "Сервіс",
+    "user": "Користувач",
+    "status": "Статус",
+    "empty": "Немає записів за цими фільтрами",
+    "from": "Від",
+    "to": "До"
   }
 }

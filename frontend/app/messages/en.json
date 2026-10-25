@@ -152,7 +152,8 @@
     "usersDesc": "Accounts and roles",
     "returns": "Returns",
     "purchaseOrders": "Purchasing",
-    "promoCodes": "Promo codes"
+    "promoCodes": "Promo codes",
+    "audit": "Audit log"
   },
   "summary": {
     "title": "System Overview",
@@ -1737,5 +1738,23 @@
         }
       ]
     }
+  },
+  "audit": {
+    "title": "Audit log",
+    "subtitle": "Who did what and when, across all services",
+    "userId": "User ID",
+    "type": "Type",
+    "allTypes": "All",
+    "type_http_request": "HTTP request",
+    "type_rabbitmq": "Event",
+    "action": "Event key",
+    "actionPlaceholder": "e.g. order.created",
+    "date": "Date",
+    "service": "Service",
+    "user": "User",
+    "status": "Status",
+    "empty": "No entries match the filters",
+    "from": "From",
+    "to": "To"
   }
 }

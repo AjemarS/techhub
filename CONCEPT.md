@@ -331,7 +331,7 @@ never touch each other's tables. User and admin lookups go to auth-service over 
 | Event | Publisher | Consumers | Description |
 |-------|-----------|-----------|-------------|
 | `inventory.stock.changed` | Inventory | Product, audit | Stock level changed → sync Product.stock |
-| `inventory.goods_received` | Inventory | Product, audit | GRN created → sync Product.stock |
+| `inventory.goods_received` | Inventory | Audit | GRN created (Product.stock follows the `inventory.stock.changed` it also publishes) |
 | `inventory.low_stock` | Inventory | Notification, audit | Stock below threshold → email + SSE alert |
 | `order.created` | Order | Notification, audit | New order → confirmation email (stock is reserved over HTTP, not by this event) |
 | `order.cancelled` | Order | Notification, audit | Order cancelled → notify customer (stock is released over HTTP) |

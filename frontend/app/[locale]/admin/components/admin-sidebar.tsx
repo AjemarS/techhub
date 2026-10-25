@@ -9,6 +9,7 @@ import {
   ExternalLink, Pin, PinOff,
   ChevronDown,
   RotateCcw,
+  ScrollText,
   Tag,
 } from "lucide-react";
 import { cn } from "~/lib/cn";
@@ -61,6 +62,7 @@ const navigationGroups: NavGroup[] = [
   { key: "promoCodes", href: "/admin/promo-codes", icon: Tag, roles: ["admin"] },
   { key: "reports", href: "/admin/reports", icon: BarChart3, roles: ["admin"] },
   { key: "users", href: "/admin/users", icon: Users, roles: ["admin"] },
+  { key: "audit", href: "/admin/audit", icon: ScrollText, roles: ["admin"] },
 ];
 
 const labelCls = (pinned: boolean) =>

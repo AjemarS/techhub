@@ -142,7 +142,7 @@ TechHub uses a topic exchange `techhub.events` for asynchronous communication:
 - **order.cancelled** → consumed by notification-service (cancellation email); stock is released synchronously over HTTP
 - **order.status_changed** → consumed by notification-service (status update email)
 - **inventory.stock.changed** → consumed by product-consumer (update denormalized stock)
-- **inventory.goods_received** → consumed by product-consumer
+- **inventory.goods_received** → audit only (the GRN's `inventory.stock.changed` updates the catalog)
 - **inventory.low_stock** → consumed by notification-service (alert admins)
 - **All events** → consumed by audit-service (persistent audit log)
 

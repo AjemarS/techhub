@@ -2,6 +2,7 @@ import random
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from decimal import Decimal
+from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
@@ -280,6 +281,51 @@ class StockAPITest(APITestCase):
             },
         )
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_adjust_publishes_delta_for_catalog(self):
+        """The catalog follows a stock count like any other change (fix #26)."""
+        self.client.force_authenticate(user=_create_admin_user())
+        with mock.patch("inventory.views.publish_event") as publish, self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(
+                "/api/stock/adjust/", {"product_id": 1, "warehouse_id": self.warehouse.pk, "new_quantity": 93},
+            )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        publish.assert_called_once()
+        name, payload = publish.call_args.args
+        self.assertEqual((name, payload["change"], payload["quantity"]), ("inventory.stock.changed", -7, 93))
+
+    def test_adjust_below_reserved_rejected(self):
+        self.stock.reserved = 30
+        self.stock.save()
+        self.client.force_authenticate(user=_create_admin_user())
+        response = self.client.post(
+            "/api/stock/adjust/", {"product_id": 1, "warehouse_id": self.warehouse.pk, "new_quantity": 29},
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.stock.refresh_from_db()
+        self.assertEqual(self.stock.quantity, 100)
+
+    def test_transfer_carries_average_cost(self):
+        """Moved units keep their cost, so a showroom sale is not costed at 0 (fix #29)."""
+        Stock.objects.filter(pk=self.stock.pk).update(quantity=10, average_cost=Decimal("100.00"))
+        showroom = _create_warehouse("Showroom", "showroom")
+        self.client.force_authenticate(user=_create_admin_user())
+        response = self.client.post("/api/stock/transfer/", {
+            "product_id": 1, "from_warehouse_id": self.warehouse.pk, "to_warehouse_id": showroom.pk, "quantity": 4,
+        })
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        dest = Stock.objects.get(product_id=1, warehouse=showroom)
+        self.assertEqual((dest.quantity, dest.average_cost), (4, Decimal("100.00")))
+
+    def test_transfer_blends_with_destination_cost(self):
+        Stock.objects.filter(pk=self.stock.pk).update(quantity=10, average_cost=Decimal("100.00"))
+        showroom = _create_warehouse("Showroom", "showroom")
+        Stock.objects.create(product_id=1, warehouse=showroom, quantity=4, average_cost=Decimal("40.00"))
+        self.client.force_authenticate(user=_create_admin_user())
+        self.client.post("/api/stock/transfer/", {
+            "product_id": 1, "from_warehouse_id": self.warehouse.pk, "to_warehouse_id": showroom.pk, "quantity": 4,
+        })
+        self.assertEqual(Stock.objects.get(product_id=1, warehouse=showroom).average_cost, Decimal("70.00"))
 
 
 class GoodsReceiptAPITest(APITestCase):

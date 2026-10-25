@@ -12,7 +12,7 @@
 - Role-based access (njs + service permissions): anonymous=catalog+cart+placing/paying an order, user=own orders,
   returns, reviews, cashier=POS, warehouse_worker=stock+GRN+purchase orders, admin=full. Matrix: CONCEPT.md §2.3.
 - Event bus: RabbitMQ topic exchange `techhub.events`. Publishers: order-service, inventory-service.
-  Consumers: product-consumer (inventory.stock.changed, inventory.goods_received), notification-service (order events,
+  Consumers: product-consumer (inventory.stock.changed), notification-service (order events,
   low stock), audit-service (all events, `#`).
 - Route ordering matters in nginx: prefix matches `/api/{path}`, `/media/{path}`, `/auth/{path}` must be declared
   before `/{path}`. nginx matches longest prefix first.
