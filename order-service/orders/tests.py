@@ -1194,6 +1194,7 @@ class InternalTokenHeaderTest(TestCase):
         self.assertEqual(post.call_args.args[2]["X-Internal-Token"], "s3cret")
 
 
+@mock.patch("orders.views.check_availability", new=mock.Mock(return_value=(True, None)))
 @mock.patch("orders.order_service.release_stock", return_value=INVENTORY_OK)
 @mock.patch("orders.order_service.deduct_stock_batch", return_value=INVENTORY_OK)
 @mock.patch("orders.order_service.reserve_stock", return_value=INVENTORY_OK)
