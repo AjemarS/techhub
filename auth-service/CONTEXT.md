@@ -176,7 +176,7 @@ Gateway injects these as `X-Gateway-User-*` headers to downstream Django service
 - Expiry: 7 days (`expiresIn`)
 - Refresh window: 24 hours (`updateAge`)
 - Cookie prefix: `better-auth`
-- Cross-subdomain cookies enabled
+- Host-only cookies (no `Domain`): a parent-domain cookie from prod would shadow staging's session
 
 ## Security Features
 - [x] Brute-force protection (Redis, Lua atomic, exponential backoff, fail-closed)
