@@ -1267,3 +1267,53 @@ class PickFulfilmentWarehouseTest(TestCase):
     def test_configured_warehouse_wins(self):
         from . import inventory_client
         self.assertEqual(inventory_client.pick_fulfilment_warehouse([{"product_id": 7, "quantity": 1}]), (3, None))
+
+
+@mock.patch("orders.order_service.stripe.Refund.create", return_value=mock.Mock(id="re_1"))
+@mock.patch("orders.management.commands.cancel_stuck_orders.release_stock", return_value=INVENTORY_OK)
+class CancelStuckOrdersTest(TestCase):
+    """Only a paid order that cannot hold its reserve is compensated, not every one waiting to ship (fix #36)."""
+
+    def _paid(self, warehouse_id=1, products=(7,)):
+        order = Order.objects.create(
+            order_number=f"ORD-S{Order.objects.count() + 1}", status=Order.PAID, warehouse_id=warehouse_id,
+            payment_status=Order.PAYMENT_PAID, stripe_payment_intent_id="pi_1", total_amount=Decimal("100.00"),
+        )
+        Order.objects.filter(pk=order.pk).update(paid_at=timezone.now() - timedelta(hours=2))
+        for pid in products:
+            OrderItem.objects.create(order=order, product_id=pid, quantity=1, price=Decimal("50.00"))
+        return order
+
+    def _run(self, *args):
+        from django.core.management import call_command
+        call_command("cancel_stuck_orders", *args, stdout=mock.Mock())
+
+    @mock.patch("orders.order_service.reserve_stock", return_value=INVENTORY_OK)  # 409 replay: already reserved
+    def test_paid_order_holding_its_reserve_stays(self, reserve, release, refund):
+        order = self._paid()
+        self._run()
+        order.refresh_from_db()
+        self.assertEqual((order.status, order.payment_status), (Order.PAID, Order.PAYMENT_PAID))
+        self.assertEqual(reserve.call_args.kwargs["idempotency_key"], f"reserve-{order.id}-7")
+        release.assert_not_called()
+        refund.assert_not_called()
+
+    @mock.patch("orders.order_service.reserve_stock", side_effect=[INVENTORY_OK, (None, "Insufficient available stock")])
+    def test_paid_order_without_a_reserve_is_cancelled_and_refunded(self, reserve, release, refund):
+        order = self._paid(products=(7, 8))
+        self._run()
+        order.refresh_from_db()
+        self.assertEqual((order.status, order.payment_status), (Order.CANCELLED, Order.PAYMENT_REFUNDED))
+        refund.assert_called_once()
+        # Only the line that does hold a reserve gives it back
+        self.assertEqual([c.kwargs["product_id"] for c in release.call_args_list], [7])
+
+    @mock.patch("orders.order_service.reserve_stock", return_value=INVENTORY_OK)
+    def test_orders_without_a_warehouse_and_dry_runs_touch_nothing(self, reserve, release, refund):
+        no_warehouse, stuck = self._paid(warehouse_id=None), self._paid()
+        self._run("--dry-run")
+        self._run()  # no_warehouse: nothing was ever reserved, so nothing to compensate
+        reserve.assert_called_once()
+        self.assertEqual(reserve.call_args.kwargs["reference_id"], str(stuck.id))
+        no_warehouse.refresh_from_db()
+        self.assertEqual(no_warehouse.status, Order.PAID)
