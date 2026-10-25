@@ -39,7 +39,7 @@ services:
     ports: !reset []
     environment:
       DEBUG: "False"
-    # the image CMD: migrate, collectstatic, gunicorn -w 2
+    # the image CMD: migrate, collectstatic, gunicorn (WEB_CONCURRENCY workers, 2 by default)
     command: !reset null
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health/')\" || exit 1"]
@@ -68,7 +68,7 @@ services:
     ports: !reset []
     environment:
       DEBUG: "False"
-    # the image CMD: migrate, collectstatic, gunicorn -w 2
+    # the image CMD: migrate, collectstatic, gunicorn (WEB_CONCURRENCY workers, 2 by default)
     command: !reset null
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8001/api/health/')\" || exit 1"]
@@ -97,7 +97,9 @@ services:
     ports: !reset []
     environment:
       DEBUG: "False"
-    # the image CMD: migrate, collectstatic, gunicorn -w 2
+      # Workers mostly wait on catalog and inventory calls, so more of them fit in one CPU
+      WEB_CONCURRENCY: "4"
+    # the image CMD: migrate, collectstatic, gunicorn (WEB_CONCURRENCY workers, 2 by default)
     command: !reset null
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8002/api/orders/health/')\" || exit 1"]

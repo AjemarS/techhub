@@ -1,7 +1,11 @@
 import os
 from pathlib import Path
 
+from shared_auth.cache import redis_caches
 from shared_auth.settings_base import BASE_REST_FRAMEWORK, BASE_SPECTACULAR_SETTINGS
+
+# Throttle counters and cached data shared by all workers (Redis database 1)
+CACHES = redis_caches(1)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY")

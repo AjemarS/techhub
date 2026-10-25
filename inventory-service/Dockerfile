@@ -32,6 +32,8 @@ CMD ["sh", "-c", "rm -rf $PROMETHEUS_MULTIPROC_DIR && mkdir -p $PROMETHEUS_MULTI
 # PROD stage
 # ----------------------
 FROM python:3.13-slim AS prod
+# gunicorn reads its worker count from here; compose can override it per service
+ENV WEB_CONCURRENCY=2
 
 ENV PROMETHEUS_MULTIPROC_DIR=/tmp/prometheus
 
@@ -54,4 +56,4 @@ EXPOSE 8001
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=10s \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8001/api/health/')" || exit 1
 
-CMD ["sh", "-c", "rm -rf $PROMETHEUS_MULTIPROC_DIR && mkdir -p $PROMETHEUS_MULTIPROC_DIR && python manage.py migrate && python manage.py collectstatic --noinput && exec gunicorn inventory_service.wsgi:application -w 2 --bind 0.0.0.0:8001 --log-level info --access-logfile - --error-logfile -"]
+CMD ["sh", "-c", "rm -rf $PROMETHEUS_MULTIPROC_DIR && mkdir -p $PROMETHEUS_MULTIPROC_DIR && python manage.py migrate && python manage.py collectstatic --noinput && exec gunicorn inventory_service.wsgi:application --bind 0.0.0.0:8001 --log-level info --access-logfile - --error-logfile -"]

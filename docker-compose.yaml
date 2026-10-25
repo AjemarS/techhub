@@ -113,6 +113,7 @@ services:
     container_name: product_service
     restart: unless-stopped
     environment:
+      REDIS_URL: redis://redis:6379
       DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@products_db:5432/${PRODUCTS_DB_NAME:-products_db}
       DB_NAME: ${PRODUCTS_DB_NAME:-products_db}
       DB_USER: ${DB_USER:-postgres}
@@ -195,6 +196,7 @@ services:
     container_name: inventory_service
     restart: unless-stopped
     environment:
+      REDIS_URL: redis://redis:6379
       DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@inventory_db:5432/${INVENTORY_DB_NAME}
       DB_NAME: ${INVENTORY_DB_NAME}
       DB_USER: ${DB_USER:-postgres}
@@ -232,6 +234,7 @@ services:
     container_name: order_service
     restart: unless-stopped
     environment:
+      REDIS_URL: redis://redis:6379
       DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@orders_db:5432/${ORDERS_DB_NAME}
       DB_NAME: ${ORDERS_DB_NAME}
       DB_USER: ${DB_USER:-postgres}
@@ -328,6 +331,7 @@ services:
     container_name: product_consumer
     restart: unless-stopped
     environment:
+      REDIS_URL: redis://redis:6379
       DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@products_db:5432/${PRODUCTS_DB_NAME:-products_db}
       DB_NAME: ${PRODUCTS_DB_NAME:-products_db}
       DB_USER: ${DB_USER:-postgres}
@@ -421,6 +425,8 @@ services:
     image: redis:7-alpine
     container_name: redis
     restart: unless-stopped
+    # Below the 128M container limit; only keys with a TTL (cache entries) are evicted, never auth's
+    command: redis-server --maxmemory 96mb --maxmemory-policy volatile-lru
     ports:
       - "127.0.0.1:6379:6379"
     healthcheck:

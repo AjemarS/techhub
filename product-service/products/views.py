@@ -9,6 +9,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
 
+from .catalog_cache import cached_response
 from .filters import ProductFilter
 from .models import Category, Product
 from .pagination import StandardResultsSetPagination
@@ -60,6 +61,11 @@ class ProductViewSet(viewsets.ModelViewSet):
             return [IsAuthenticatedOrReadOnly()]
         return [IsAdminUser()]
 
+    @cached_response
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @cached_response
     def retrieve(self, request, *args, **kwargs):
         pk = kwargs.get("pk")
         if pk and not pk.isdigit():
@@ -115,6 +121,7 @@ class ProductViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
     @action(detail=False, methods=["get"])
+    @cached_response
     def by_category(self, request):
         """Return in-stock products for the given category_id."""
         category_id = request.query_params.get("category_id")
@@ -146,6 +153,7 @@ class ProductViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
     @action(detail=True, methods=["get"])
+    @cached_response
     def similar(self, request, pk=None):
         """Return up to 8 in-stock products in the same category (excluding current)."""
         product = self.get_object()
@@ -177,6 +185,14 @@ class CategoryViewSet(viewsets.ModelViewSet):
     search_fields = ["name"]
     ordering_fields = ["name", "created_at"]
     ordering = ["name"]
+
+    @cached_response
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @cached_response
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
 
     def get_permissions(self):
         if self.action in ("list", "retrieve"):

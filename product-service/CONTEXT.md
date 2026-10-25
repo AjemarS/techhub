@@ -31,6 +31,7 @@ python manage.py test
 
 #### Viewsets
 - `CategoryViewSet` — CRUD, locale-aware list/detail
+- **Catalog cache** (`products/catalog_cache.py`): anonymous reads (product list/detail/similar/by_category, categories) are cached in Redis for 60 s, keyed by a catalog version; product/category save or delete, stock events, `reconcile_stock` and rating refreshes set a new version, so changes show at once. Redis down → plain misses (`shared_auth.cache.ResilientRedisCache`).
 - `ProductViewSet` — CRUD, filtering (`DjangoFilterBackend`), search, ordering, locale-aware. `stock` is read-only: it follows inventory events and the hourly `reconcile_stock`.
 - `CartViewSet` — list, add_item (`POST`), remove_item, merge. `authentication_classes = []` (anonymous writes).
 

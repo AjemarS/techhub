@@ -4,6 +4,8 @@ from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.utils.text import slugify
 
+from . import catalog_cache
+
 
 class Category(models.Model):
     name = models.CharField(max_length=100, unique=True, verbose_name="Назва")
@@ -186,3 +188,4 @@ class Review(models.Model):
             rating=Decimal(str(round(stats["avg"] or 0, 1))),
             review_count=stats["n"],
         )
+        catalog_cache.bump()

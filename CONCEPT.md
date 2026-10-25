@@ -67,7 +67,7 @@ System fully functional. Microservices run via Docker Compose. All core retail f
                           └──────────────────────────┘
 ```
 
-Not drawn: audit-service (Express, port 8005, `logging_db`), Redis (sessions, rate limits, SSE fan-out),
+Not drawn: audit-service (Express, port 8005, `logging_db`), Redis (sessions, rate limits, SSE fan-out; for the Django services shared DRF throttle counters, the USD rate and cached catalog reads),
 Prometheus + Grafana (scrape every service's `/metrics`).
 
 ### 1.2 Service Responsibilities

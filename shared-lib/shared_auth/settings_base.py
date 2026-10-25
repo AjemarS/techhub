@@ -12,7 +12,9 @@ BASE_REST_FRAMEWORK = {
         "rest_framework.throttling.UserRateThrottle",
     ],
     "DEFAULT_THROTTLE_RATES": {
-        "anon": "60/minute",
+        # Counted in Redis, so all workers share one budget per client; it used to be 60 per worker,
+        # i.e. 120 with two workers, and server-rendered pages all reach the API from one address
+        "anon": "120/minute",
         "user": "300/minute",
     },
     "DEFAULT_FILTER_BACKENDS": [

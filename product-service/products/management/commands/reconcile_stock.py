@@ -4,6 +4,7 @@ import requests
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
+from products import catalog_cache
 from products.models import Product
 
 logger = logging.getLogger(__name__)
@@ -38,5 +39,7 @@ class Command(BaseCommand):
                 Product.objects.filter(pk=product.pk).update(stock=actual, in_stock=actual > 0)
                 fixed += 1
 
+        if fixed:
+            catalog_cache.bump()
         logger.info("Stock reconciled | checked=%d fixed=%d", len(totals), fixed)
         self.stdout.write(self.style.SUCCESS(f"stock_reconcile_fixed {fixed}"))
