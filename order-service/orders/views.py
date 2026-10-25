@@ -18,7 +18,7 @@ from rest_framework.response import Response
 from orders.models import Order, OrderItem
 from orders import metrics
 from orders import order_service as svc
-from orders.inventory_client import check_availability, release_stock
+from orders.inventory_client import release_stock
 from orders.serializers import (
     OrderCreateSerializer,
     OrderDetailForAdminSerializer,
@@ -170,27 +170,8 @@ class OrderViewSet(viewsets.ModelViewSet):
         data = serializer.validated_data
         items_data = data.pop("items")
 
-        # Stock pre-check before order creation
+        # Stock was already checked by the serializer (_validate_stock), once per item
         warehouse_id = data.get("warehouse_id")
-        if warehouse_id:
-            for item in items_data:
-                available, error = check_availability(
-                    product_id=item["product_id"],
-                    warehouse_id=warehouse_id,
-                    quantity=item["quantity"],
-                    request=request,
-                )
-                if not available:
-                    product_name = item.get("product_name", f"Product #{item['product_id']}")
-                    return Response(
-                        {
-                            "error": f" товару '{product_name}' недостатньо на складі",
-                            "detail": error or "Немає в наявності",
-                            "product_id": item["product_id"],
-                        },
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-
         user_id = request.user.username if request.user.is_authenticated else ""
 
         order = svc.create_order(

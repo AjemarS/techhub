@@ -74,7 +74,9 @@ def _validate_stock(data):
                 f"Product {item.get('product_name', item['product_id'])}: {msg}"
             )
         if ok is None:
+            # No order without a stock check: it would only fail at reserve, after being created
             logger.warning("Stock check unavailable for product=%s", item["product_id"])
+            raise InventoryServiceUnavailable()
 
 
 class OrderItemSerializer(serializers.ModelSerializer):
