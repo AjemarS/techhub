@@ -91,6 +91,8 @@ INVENTORY_SERVICE_URL = os.environ.get(
 )
 # Shared with inventory-service: identifies this service on stock calls made without a signed-in user
 INTERNAL_SERVICE_TOKEN = os.environ.get("INTERNAL_SERVICE_TOKEN", "")
+# Ships every delivery order when set; otherwise the first warehouse that holds all its items
+DEFAULT_FULFILMENT_WAREHOUSE_ID = os.environ.get("DEFAULT_FULFILMENT_WAREHOUSE_ID", "")
 PRODUCT_SERVICE_URL = os.environ.get(
     "PRODUCT_SERVICE_URL", "http://product-service:8000"
 )

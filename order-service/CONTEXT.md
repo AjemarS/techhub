@@ -103,6 +103,10 @@ Transitions enforced in `Order.can_transition_to()`.
 ## Saga Integration (Order ↔ Inventory)
 
 ### Synchronous HTTP Flow
+0. **Which warehouse:** pickup and POS name it (`warehouse_id`); a delivery order gets one from the server
+   (`DEFAULT_FULFILMENT_WAREHOUSE_ID`, else the first active `warehouse` holding every item), or is refused
+   with 400 when none has it all (503 if inventory is down). Online pickup without a showroom is refused.
+   Every call carries `X-Internal-Token` (`INTERNAL_SERVICE_TOKEN`), so guests and the Stripe webhook can move stock.
 1. **Create order:** order-service → `POST /api/inventory/stock/reserve/` (with `product_id`, `quantity`, `warehouse_id`)
 2. **Ship order:** order-service → `POST /api/inventory/stock/deduct_batch/` with `from_reserved=true` (converts reserve → deduction, all items or none)
 3. **Cancel order:** order-service → `POST /api/inventory/stock/release/` (releases reserved stock)

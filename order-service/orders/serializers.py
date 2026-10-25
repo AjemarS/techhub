@@ -7,10 +7,30 @@ from rest_framework import serializers
 from rest_framework.exceptions import APIException, ValidationError
 
 from .models import Order, OrderItem, ReturnRequest
-from .inventory_client import check_availability
+from .inventory_client import check_availability, pick_fulfilment_warehouse
 from .product_client import CatalogUnavailable, get_catalog_items
 
 logger = logging.getLogger(__name__)
+
+
+class InventoryServiceUnavailable(APIException):
+    status_code = 503
+    default_detail = "Stock cannot be checked right now, try again later."
+    default_code = "inventory_unavailable"
+
+
+def _assign_fulfilment_warehouse(data):
+    """An online order always leaves from a warehouse, or nothing would be reserved and written off."""
+    if data.get("warehouse_id"):
+        return
+    if data.get("delivery_method", Order.PICKUP) == Order.PICKUP:
+        raise ValidationError({"warehouse_id": "Choose the showroom to pick the order up from."})
+    warehouse_id, error = pick_fulfilment_warehouse(data["items"])
+    if error:
+        raise InventoryServiceUnavailable()
+    if not warehouse_id:
+        raise ValidationError({"items": "No warehouse has all of these items in stock."})
+    data["warehouse_id"] = warehouse_id
 
 
 class CatalogServiceUnavailable(APIException):
@@ -183,6 +203,8 @@ class OrderCreateSerializer(serializers.Serializer):
 
     def validate(self, data):
         _apply_catalog_prices(data)
+        if data.get("channel", Order.ONLINE) == Order.ONLINE:
+            _assign_fulfilment_warehouse(data)
         _validate_stock(data)
         return data
 
