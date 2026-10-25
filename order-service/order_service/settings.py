@@ -89,6 +89,8 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 INVENTORY_SERVICE_URL = os.environ.get(
     "INVENTORY_SERVICE_URL", "http://inventory-service:8001"
 )
+# Shared with inventory-service: identifies this service on stock calls made without a signed-in user
+INTERNAL_SERVICE_TOKEN = os.environ.get("INTERNAL_SERVICE_TOKEN", "")
 PRODUCT_SERVICE_URL = os.environ.get(
     "PRODUCT_SERVICE_URL", "http://product-service:8000"
 )

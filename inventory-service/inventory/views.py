@@ -11,7 +11,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, permissions, status, views, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import ValidationError
-from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated, IsAuthenticatedOrReadOnly
+from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
 
 from .eventbus import publish_event, _check_and_publish_low_stock
@@ -19,6 +19,7 @@ from .filters import StockFilter, StockMovementFilter
 from .models import ActivityEvent, GoodsReceiptItem, GoodsReceiptNote, PurchaseOrder, Stock, StockMovement, Supplier, Warehouse
 from .purchasing import receive_against_order, reorder_suggestions
 from shared_auth.permissions import IsAdminOrWarehouseWorker
+from .permissions import IsAuthenticatedOrInternalService
 from .serializers import (
     ActivityEventSerializer,
     AdjustStockSerializer,
@@ -184,7 +185,7 @@ class StockViewSet(viewsets.ReadOnlyModelViewSet):
         if self.action in ("list", "retrieve"):
             return [IsAuthenticatedOrReadOnly()]
         if self.action in ("reserve", "deduct", "deduct_batch", "release", "return_to_stock"):
-            return [IsAuthenticated()]
+            return [IsAuthenticatedOrInternalService()]
         if self.action in ("transfer", "adjust", "movements", "reorder", "reorder_suggestions"):
             return [IsAdminOrWarehouseWorker()]
         return [IsAdminUser()]

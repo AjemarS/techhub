@@ -7,7 +7,7 @@ from unittest import mock
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.db import IntegrityError, connections
-from django.test import TestCase, TransactionTestCase
+from django.test import TestCase, TransactionTestCase, override_settings
 from rest_framework import status
 from rest_framework.test import APIClient, APITestCase
 
@@ -759,3 +759,32 @@ class GoodsReceiptAuthorAndNumberTest(APITestCase):
         notes = list(GoodsReceiptNote.objects.order_by("pk"))
         self.assertEqual({n.created_by for n in notes}, {"Олена"})
         self.assertEqual(len({n.reference_number for n in notes}), 2)
+
+
+@override_settings(INTERNAL_SERVICE_TOKEN="s3cret")
+class InternalServiceAccessTest(APITestCase):
+    """order-service reserves for guests and from the Stripe webhook, where no user is signed in (fix #33)."""
+
+    def setUp(self):
+        self.warehouse = _create_warehouse()
+        self.stock = _create_stock(product_id=1, warehouse=self.warehouse, quantity=10)
+        self.body = {"product_id": 1, "warehouse_id": self.warehouse.pk, "quantity": 2}
+
+    def test_service_token_may_reserve_without_a_user(self):
+        response = self.client.post("/api/stock/reserve/", self.body, HTTP_X_INTERNAL_TOKEN="s3cret")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.stock.refresh_from_db()
+        self.assertEqual(self.stock.reserved, 2)
+
+    def test_anonymous_or_wrong_token_is_refused(self):
+        for headers in ({}, {"HTTP_X_INTERNAL_TOKEN": "guess"}, {"HTTP_X_INTERNAL_TOKEN": ""}):
+            for action in ("reserve", "release", "deduct", "return_to_stock"):
+                response = self.client.post(f"/api/stock/{action}/", self.body, **headers)
+                self.assertIn(response.status_code, (401, 403), (action, headers))
+        self.stock.refresh_from_db()
+        self.assertEqual((self.stock.quantity, self.stock.reserved), (10, 0))
+
+    @override_settings(INTERNAL_SERVICE_TOKEN="")
+    def test_unset_token_never_matches(self):
+        response = self.client.post("/api/stock/reserve/", self.body, HTTP_X_INTERNAL_TOKEN="")
+        self.assertIn(response.status_code, (401, 403))

@@ -16,7 +16,8 @@ def inventory_url(path):
 
 def _build_headers(request=None, idempotency_key=None):
     """Build request headers with gateway user context and optional idempotency key."""
-    headers = {}
+    # A guest or the Stripe webhook has no user to forward: inventory accepts the service token instead
+    headers = {"X-Internal-Token": settings.INTERNAL_SERVICE_TOKEN}
     if idempotency_key:
         headers["Idempotency-Key"] = idempotency_key
     if request:

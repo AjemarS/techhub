@@ -1163,3 +1163,14 @@ class CancelSideEffectsTest(TestCase):
         order.refresh_from_db()
         self.assertEqual((order.status, order.payment_status), (Order.PAID, Order.PAYMENT_PAID))
         release.assert_not_called()
+
+
+class InternalTokenHeaderTest(TestCase):
+    """Calls to inventory carry the service token, so a guest or the webhook can reserve (fix #33)."""
+
+    @override_settings(INTERNAL_SERVICE_TOKEN="s3cret")
+    def test_guest_reserve_sends_the_service_token(self):
+        from . import inventory_client
+        with mock.patch.object(inventory_client, "_post", return_value=mock.Mock(status_code=200, json=lambda: {})) as post:
+            inventory_client.reserve_stock(5, 2, 1, "order", "1", "reserve-1-5", request=None)
+        self.assertEqual(post.call_args.args[2]["X-Internal-Token"], "s3cret")

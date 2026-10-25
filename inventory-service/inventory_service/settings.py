@@ -92,6 +92,9 @@ REST_FRAMEWORK = {**BASE_REST_FRAMEWORK}
 
 PRODUCT_SERVICE_URL = os.environ.get("PRODUCT_SERVICE_URL", "http://product-service:8000")
 AUDIT_SERVICE_URL = os.environ.get("AUDIT_SERVICE_URL", "http://audit-service:8005")
+# Shared with order-service: lets it move stock for guests and webhooks, where no user is signed in
+INTERNAL_SERVICE_TOKEN = os.environ.get("INTERNAL_SERVICE_TOKEN", "")
+
 LOW_STOCK_THRESHOLD = int(os.environ.get("LOW_STOCK_THRESHOLD", "5"))
 
 SPECTACULAR_SETTINGS = {
