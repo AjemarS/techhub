@@ -88,9 +88,9 @@ export const auth = betterAuth({
 
   advanced: {
     cookiePrefix: "better-auth",
-    crossSubDomainCookies: {
-      enabled: true,
-    },
+    // Host-only cookies: crossSubDomainCookies made prod set Domain=techhub.pp.ua, so browsers sent prod's
+    // session to staging.techhub.pp.ua under the same name and staging read it instead of its own.
+    // The frontend and /auth share one host behind the gateway, so no subdomain needs the cookie.
     ipAddress: {
       ipAddressHeaders: ["x-forwarded-for", "x-real-ip", "x-client-ip"],
     },
