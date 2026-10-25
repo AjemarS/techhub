@@ -157,74 +157,17 @@ class ProductAPITest(APITestCase):
         response = self.client.get("/api/products/by_category/")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
-    def test_update_stock_requires_admin(self):
-        user = _create_regular_user()
-        self.client.force_authenticate(user)
-        response = self.client.post(
-            f"/api/products/{self.product.pk}/update_stock/",
-            {"quantity": 5},
-            format="json",
-        )
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-
-    def test_update_stock_as_admin_increments(self):
+    def test_stock_follows_the_warehouse_only(self):
+        """Product.stock moves with inventory events; set by hand it would drift (fix #35)."""
         admin = _create_admin_user()
         self.client.force_authenticate(admin)
-        response = self.client.post(
-            f"/api/products/{self.product.pk}/update_stock/",
-            {"quantity": 5},
-            format="json",
-        )
+        url = f"/api/products/{self.product.pk}/"
+        response = self.client.post(f"{url}update_stock/", {"quantity": 5}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        response = self.client.patch(url, {"stock": 999}, format="json")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.product.refresh_from_db()
-        self.assertEqual(self.product.stock, 15)
-        self.assertTrue(self.product.in_stock)
-
-    def test_update_stock_as_admin_decrements(self):
-        admin = _create_admin_user()
-        self.client.force_authenticate(admin)
-        response = self.client.post(
-            f"/api/products/{self.product.pk}/update_stock/",
-            {"quantity": -3},
-            format="json",
-        )
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.product.refresh_from_db()
-        self.assertEqual(self.product.stock, 7)
-        self.assertTrue(self.product.in_stock)
-
-    def test_update_stock_insufficient(self):
-        admin = _create_admin_user()
-        self.client.force_authenticate(admin)
-        response = self.client.post(
-            f"/api/products/{self.product.pk}/update_stock/",
-            {"quantity": -100},
-            format="json",
-        )
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.product.refresh_from_db()
         self.assertEqual(self.product.stock, 10)
-
-    def test_update_stock_missing_quantity(self):
-        admin = _create_admin_user()
-        self.client.force_authenticate(admin)
-        response = self.client.post(
-            f"/api/products/{self.product.pk}/update_stock/",
-            {},
-            format="json",
-        )
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-
-    def test_update_stock_invalid_quantity(self):
-        admin = _create_admin_user()
-        self.client.force_authenticate(admin)
-        response = self.client.post(
-            f"/api/products/{self.product.pk}/update_stock/",
-            {"quantity": "not-a-number"},
-            format="json",
-        )
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-
 
 class LocaleSerializationTest(APITestCase):
     def setUp(self):

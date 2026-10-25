@@ -1,6 +1,6 @@
 #!/bin/sh
 # Gateway access checks against a running stack (FIXES items 5, 6, 7, 9).
-# Usage: sh nginx/tests/gateway_access.sh   (GATEWAY, ADMIN_EMAIL, ADMIN_PASSWORD, CORS_TEST_ORIGIN optional)
+# Usage: sh nginx/tests/gateway_access.sh   (GATEWAY, ADMIN_EMAIL, ADMIN_PASSWORD, CORS_TEST_ORIGIN, INTERNAL_SERVICE_TOKEN optional)
 G=${GATEWAY:-http://localhost}
 fail=0
 
@@ -88,5 +88,8 @@ case "$script_src" in
   *) echo "FAIL script-src has no nonce: $script_src"; fail=1 ;;
 esac
 echo "$hdrs" | grep -qi '^x-xss-protection:' && { echo "FAIL X-XSS-Protection still sent"; fail=1; } || echo "ok   no X-XSS-Protection"
+
+echo "# 33. the service token is not accepted from clients"
+check "client X-Internal-Token on stock reserve" "401 403" POST /api/inventory/stock/reserve/   -H "Content-Type: application/json" -H "X-Internal-Token: ${INTERNAL_SERVICE_TOKEN:-x}"   -d '{"product_id":1,"warehouse_id":1,"quantity":1}'
 
 exit $fail

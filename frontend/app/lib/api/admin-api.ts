@@ -64,12 +64,6 @@ export const productApi = {
     return apiCall(`${API_URL}/products/${id}/similar/`);
   },
 
-  async updateStock(id: number, quantity: number): Promise<ApiResponse<Product>> {
-    return apiCall(`${API_URL}/products/${id}/update_stock/`, {
-      method: "POST", body: JSON.stringify({ quantity }),
-    });
-  },
-
   async getLowStock(threshold = 10): Promise<ApiResponse<Product[]>> {
     return apiCall(`${API_URL}/products/low_stock/?threshold=${threshold}`);
   },

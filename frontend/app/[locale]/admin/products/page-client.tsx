@@ -18,7 +18,6 @@ import { useRecentProducts } from "~/lib/hooks/use-recent-products";
 import { useCurrentUser } from "~/lib/auth-client";
 import { useActivityFeed } from "../components/activity-feed";
 import { ProductFormDialog } from "./product-form-dialog";
-import { StockAdjustDialog } from "./stock-adjust-dialog";
 import { useProducts, useCategories, useDeleteProduct } from "~/lib/hooks/use-api-data";
 import { ErrorAlert } from "~/ui/components/error-alert";
 import { Pagination } from "~/ui/components/pagination";
@@ -68,8 +67,6 @@ export function AdminProductsClient({
   const [formDialogMode, setFormDialogMode] = useState<"create" | "edit">("create");
   const [formDialogProduct, setFormDialogProduct] = useState<Product | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
-  const [stockDialogProduct, setStockDialogProduct] = useState<Product | null>(null);
-  const [stockDialogOpen, setStockDialogOpen] = useState(false);
   const t = useTranslations("products");
   const tc = useTranslations("common");
   const tAct = useTranslations("activity");
@@ -140,11 +137,6 @@ export function AdminProductsClient({
     setFormDialogMode("create");
     setFormDialogProduct(null);
     setShowFormDialog(true);
-  };
-
-  const handleStockClick = (product: Product) => {
-    setStockDialogProduct(product);
-    setStockDialogOpen(true);
   };
 
 
@@ -265,7 +257,6 @@ export function AdminProductsClient({
           onSort={handleSort}
           onEdit={handleEditClick}
           onDelete={handleDeleteClick}
-          onStockAdjust={handleStockClick}
           expandedId={expandedId}
           onToggleExpand={(id) => handleToggleExpand(id as number)}
           isAdmin={isAdmin}
@@ -318,13 +309,6 @@ export function AdminProductsClient({
           cancelText={tc("cancel")}
           variant="destructive"
           loading={deleting}
-        />
-
-        <StockAdjustDialog
-          open={stockDialogOpen}
-          onOpenChange={setStockDialogOpen}
-          product={stockDialogProduct}
-          onSuccess={() => mutate()}
         />
 
         {/* Keyed per product: the form reads its fields once, when it mounts */}

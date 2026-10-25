@@ -4,14 +4,14 @@ from uuid import uuid4
 
 from django.conf import settings
 from django.db import connection
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Count, DecimalField, ExpressionWrapper, F, Max, Sum
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, permissions, status, views, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import ValidationError
-from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated, IsAuthenticatedOrReadOnly
+from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
 
 from .eventbus import publish_event, _check_and_publish_low_stock
@@ -19,6 +19,7 @@ from .filters import StockFilter, StockMovementFilter
 from .models import ActivityEvent, GoodsReceiptItem, GoodsReceiptNote, PurchaseOrder, Stock, StockMovement, Supplier, Warehouse
 from .purchasing import receive_against_order, reorder_suggestions
 from shared_auth.permissions import IsAdminOrWarehouseWorker
+from .permissions import IsAuthenticatedOrInternalService
 from .serializers import (
     ActivityEventSerializer,
     AdjustStockSerializer,
@@ -59,36 +60,40 @@ def _stock_action(request, serializer_cls, movement_type, check_and_update, post
     reference_id = serializer.validated_data.get("reference_id", "")
     idempotency_key = serializer.validated_data.get("idempotency_key", "")
 
-    if idempotency_key:
-        existing = StockMovement.objects.filter(
-            idempotency_key=idempotency_key,
-            type=movement_type,
-        ).exists()
-        if existing:
-            stock = Stock.objects.get(product_id=product_id, warehouse_id=warehouse_id)
-            return Response(StockSerializer(stock).data, status=status.HTTP_409_CONFLICT)
+    def replayed():
+        stock = Stock.objects.get(product_id=product_id, warehouse_id=warehouse_id)
+        return Response(StockSerializer(stock).data, status=status.HTTP_409_CONFLICT)
 
-    with transaction.atomic():
-        stock = Stock.objects.select_for_update().get(
-            product_id=product_id, warehouse_id=warehouse_id
-        )
-        error = check_and_update(stock, product_id, warehouse_id, quantity)
-        if error:
-            return Response(error, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        with transaction.atomic():
+            stock = Stock.objects.select_for_update().get(
+                product_id=product_id, warehouse_id=warehouse_id
+            )
+            # Checked under the row lock: a retry racing the original waits here, then sees its movement
+            if idempotency_key and StockMovement.objects.filter(
+                idempotency_key=idempotency_key, type=movement_type,
+            ).exists():
+                return replayed()
+            error = check_and_update(stock, product_id, warehouse_id, quantity)
+            if error:
+                return Response(error, status=status.HTTP_400_BAD_REQUEST)
 
-        stock.refresh_from_db()
+            stock.refresh_from_db()
 
-        StockMovement.objects.create(
-            product_id=product_id,
-            # Goods coming in (a customer return) land in the warehouse rather than leave it
-            **({"to_warehouse_id": warehouse_id} if inbound else {"from_warehouse_id": warehouse_id}),
-            quantity=quantity,
-            type=movement_type,
-            reference_type=reference_type,
-            reference_id=reference_id,
-            idempotency_key=idempotency_key,
-            created_by=_author(request),
-        )
+            StockMovement.objects.create(
+                product_id=product_id,
+                # Goods coming in (a customer return) land in the warehouse rather than leave it
+                **({"to_warehouse_id": warehouse_id} if inbound else {"from_warehouse_id": warehouse_id}),
+                quantity=quantity,
+                type=movement_type,
+                reference_type=reference_type,
+                reference_id=reference_id,
+                idempotency_key=idempotency_key,
+                created_by=_author(request),
+            )
+    except IntegrityError:
+        # Same key on another stock line: the unique index refused it and the change rolled back
+        return replayed()
 
     if post_action:
         post_action(product_id, warehouse_id, quantity, stock)
@@ -184,7 +189,7 @@ class StockViewSet(viewsets.ReadOnlyModelViewSet):
         if self.action in ("list", "retrieve"):
             return [IsAuthenticatedOrReadOnly()]
         if self.action in ("reserve", "deduct", "deduct_batch", "release", "return_to_stock"):
-            return [IsAuthenticated()]
+            return [IsAuthenticatedOrInternalService()]
         if self.action in ("transfer", "adjust", "movements", "reorder", "reorder_suggestions"):
             return [IsAdminOrWarehouseWorker()]
         return [IsAdminUser()]

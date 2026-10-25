@@ -17,9 +17,6 @@ export const productService = {
   async remove(id: number) {
     return productApi.delete(id);
   },
-  async updateStock(id: number, quantity: number) {
-    return productApi.updateStock(id, quantity);
-  },
   async getLowStock(threshold?: number) {
     return productApi.getLowStock(threshold);
   },

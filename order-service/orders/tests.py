@@ -32,6 +32,14 @@ _catalog_patch = mock.patch("orders.serializers.get_catalog_items", side_effect=
 _availability_patch = mock.patch("orders.serializers.check_availability", return_value=(True, None))
 
 
+def _stub_inventory(target):
+    """For tests about orders rather than stock: every inventory call succeeds (a test class or method)."""
+    target = mock.patch("orders.views.check_availability", new=mock.Mock(return_value=(True, None)))(target)
+    for name in ("reserve_stock", "release_stock", "deduct_stock_batch", "return_stock"):
+        target = mock.patch(f"orders.order_service.{name}", new=mock.Mock(return_value=INVENTORY_OK))(target)
+    return target
+
+
 def setUpModule():
     _catalog_patch.start()
     _availability_patch.start()
@@ -140,10 +148,12 @@ class OrderAPITest(APITestCase):
         response = self.client.get("/api/orders/")
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
+    @_stub_inventory
     def test_create_order_unauthenticated(self):
         response = self.client.post(
             "/api/orders/",
             {
+                "warehouse_id": 1,
                 "items": [
                     {"product_id": 1, "quantity": 1, "price": "99.99"}
                 ]
@@ -152,6 +162,7 @@ class OrderAPITest(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
+    @_stub_inventory
     def test_create_order_admin(self):
         user = _create_admin_user()
         self.client.force_authenticate(user=user)
@@ -159,6 +170,7 @@ class OrderAPITest(APITestCase):
             "/api/orders/",
             {
                 "channel": "online",
+                "warehouse_id": 1,
                 "customer_name": "John",
                 "customer_email": "john@test.com",
                 "items": [
@@ -979,6 +991,7 @@ class PurchasedCheckTest(APITestCase):
 
 
 
+@_stub_inventory
 class PromoCodeTest(APITestCase):
     """Codes are checked and applied on the server, counted under a lock and given back on cancel."""
 
@@ -990,7 +1003,8 @@ class PromoCodeTest(APITestCase):
     def _order(self, code="spring10", email="a@test.com", qty=1):
         # Catalog stub: 199.99 per unit
         return self.client.post("/api/orders/", {
-            "customer_email": email, "promo_code": code, "items": [{"product_id": 1, "quantity": qty}],
+            "customer_email": email, "promo_code": code, "warehouse_id": 1,
+            "items": [{"product_id": 1, "quantity": qty}],
         }, format="json")
 
     def test_percent_code_is_applied_and_counted(self):
@@ -1054,22 +1068,26 @@ class PromoCodeTest(APITestCase):
         self.assertEqual(refund_amount(order.items.get(), 1), Decimal("179.99"))
 
 
+@_stub_inventory
 class MetricsEndpointTest(APITestCase):
     def test_metrics_expose_http_and_business_counters(self):
         with self.captureOnCommitCallbacks(execute=True):
-            self.client.post("/api/orders/", {"items": [{"product_id": 1, "quantity": 1}]}, format="json")
+            self.client.post("/api/orders/", {"warehouse_id": 1, "items": [{"product_id": 1, "quantity": 1}]}, format="json")
         body = self.client.get("/metrics").content.decode()
         self.assertIn('techhub_orders_created_total{channel="online"}', body)
         # Router URLs are regexes, so that is the route label
         self.assertIn('http_requests_total{method="POST",route="api/orders/$",status="201"}', body)
 
 
+@_stub_inventory
 class PayPermissionTest(APITestCase):
     """Only the buyer can start a Stripe checkout for an order (it used to be admin-only, so nobody could pay)."""
 
     def _create(self):
         with mock.patch("orders.views.check_availability", return_value=(True, None)):
-            return self.client.post("/api/orders/", {"customer_email": "g@test.com", "items": [{"product_id": 1, "quantity": 1}]}, format="json").data
+            return self.client.post("/api/orders/", {
+                "customer_email": "g@test.com", "warehouse_id": 1, "items": [{"product_id": 1, "quantity": 1}],
+            }, format="json").data
 
     @mock.patch("orders.views.stripe.checkout.Session.create", return_value=mock.Mock(id="cs_1", url="https://stripe.test/cs_1"))
     def test_guest_pays_with_the_token_from_create(self, _session):
@@ -1163,3 +1181,140 @@ class CancelSideEffectsTest(TestCase):
         order.refresh_from_db()
         self.assertEqual((order.status, order.payment_status), (Order.PAID, Order.PAYMENT_PAID))
         release.assert_not_called()
+
+
+class InternalTokenHeaderTest(TestCase):
+    """Calls to inventory carry the service token, so a guest or the webhook can reserve (fix #33)."""
+
+    @override_settings(INTERNAL_SERVICE_TOKEN="s3cret")
+    def test_guest_reserve_sends_the_service_token(self):
+        from . import inventory_client
+        with mock.patch.object(inventory_client, "_post", return_value=mock.Mock(status_code=200, json=lambda: {})) as post:
+            inventory_client.reserve_stock(5, 2, 1, "order", "1", "reserve-1-5", request=None)
+        self.assertEqual(post.call_args.args[2]["X-Internal-Token"], "s3cret")
+
+
+@mock.patch("orders.views.check_availability", new=mock.Mock(return_value=(True, None)))
+@mock.patch("orders.order_service.release_stock", return_value=INVENTORY_OK)
+@mock.patch("orders.order_service.deduct_stock_batch", return_value=INVENTORY_OK)
+@mock.patch("orders.order_service.reserve_stock", return_value=INVENTORY_OK)
+class DeliveryOrderStockTest(APITestCase):
+    """A delivery order ships from a warehouse the server picks, so it moves stock like pickup (fix #32)."""
+
+    def _create(self, **fields):
+        return self.client.post("/api/orders/", {
+            "delivery_method": "nova_poshta", "shipping_city": "Kyiv", "shipping_address": "NP 1",
+            "customer_name": "Guest", "customer_phone": "380671234567", "customer_email": "g@test.com",
+            "items": [{"product_id": 7, "quantity": 2}], **fields,
+        }, format="json")
+
+    @mock.patch("orders.serializers.pick_fulfilment_warehouse", return_value=(4, None))
+    def test_delivery_order_reserves_ships_and_cancels_through_its_warehouse(self, _pick, reserve, deduct, release):
+        response = self._create()
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        order = Order.objects.get()
+        self.assertEqual(order.warehouse_id, 4)
+        self.assertEqual((reserve.call_args.kwargs["warehouse_id"], reserve.call_args.kwargs["quantity"]), (4, 2))
+
+        svc.update_order_status(order, Order.PAID)
+        svc.update_order_status(order, Order.DELIVERING)
+        self.assertEqual(deduct.call_args.kwargs["warehouse_id"], 4)
+
+        other = Order.objects.get(pk=self._create().data["id"])
+        svc.update_order_status(other, Order.CANCELLED)
+        self.assertEqual(release.call_args.kwargs["warehouse_id"], 4)
+
+    @mock.patch("orders.serializers.pick_fulfilment_warehouse", return_value=(None, None))
+    def test_shortage_rejects_before_the_order_exists(self, _pick, reserve, *_):
+        response = self._create()
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(Order.objects.exists())
+        reserve.assert_not_called()
+
+    @mock.patch("orders.serializers.pick_fulfilment_warehouse", return_value=(None, "HTTP 503"))
+    def test_inventory_outage_refuses_the_order(self, *_):
+        self.assertEqual(self._create().status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
+        self.assertFalse(Order.objects.exists())
+
+    def test_pickup_without_a_showroom_is_rejected(self, *_):
+        self.assertEqual(self._create(delivery_method="pickup").status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class PickFulfilmentWarehouseTest(TestCase):
+    WAREHOUSES = [
+        {"id": 2, "type": "showroom", "is_active": True},
+        {"id": 3, "type": "warehouse", "is_active": False},
+        {"id": 4, "type": "warehouse", "is_active": True},
+        {"id": 1, "type": "warehouse", "is_active": True},
+    ]
+    STOCK = {
+        7: [{"warehouse": w, "product_id": 7, "quantity": q, "reserved": r} for w, q, r in ((1, 5, 4), (2, 9, 0), (3, 9, 0), (4, 3, 0))],
+        8: [{"warehouse": w, "product_id": 8, "quantity": 9, "reserved": 0} for w in (1, 4)],
+    }
+
+    def _get(self, url, headers, params=None):
+        body = {"results": self.WAREHOUSES} if url.endswith("warehouses/") else self.STOCK[params["product_id"]]
+        return mock.Mock(status_code=200, json=lambda: body)
+
+    def test_first_active_warehouse_holding_every_item(self):
+        from . import inventory_client
+        with mock.patch.object(inventory_client, "_get", side_effect=self._get):
+            # 1 has only 1 free unit of product 7; showroom 2 and inactive 3 never ship
+            self.assertEqual(inventory_client.pick_fulfilment_warehouse(
+                [{"product_id": 7, "quantity": 2}, {"product_id": 8, "quantity": 1}]), (4, None))
+            self.assertEqual(inventory_client.pick_fulfilment_warehouse([{"product_id": 7, "quantity": 4}]), (None, None))
+
+    @override_settings(DEFAULT_FULFILMENT_WAREHOUSE_ID="3")
+    def test_configured_warehouse_wins(self):
+        from . import inventory_client
+        self.assertEqual(inventory_client.pick_fulfilment_warehouse([{"product_id": 7, "quantity": 1}]), (3, None))
+
+
+@mock.patch("orders.order_service.stripe.Refund.create", return_value=mock.Mock(id="re_1"))
+@mock.patch("orders.management.commands.cancel_stuck_orders.release_stock", return_value=INVENTORY_OK)
+class CancelStuckOrdersTest(TestCase):
+    """Only a paid order that cannot hold its reserve is compensated, not every one waiting to ship (fix #36)."""
+
+    def _paid(self, warehouse_id=1, products=(7,)):
+        order = Order.objects.create(
+            order_number=f"ORD-S{Order.objects.count() + 1}", status=Order.PAID, warehouse_id=warehouse_id,
+            payment_status=Order.PAYMENT_PAID, stripe_payment_intent_id="pi_1", total_amount=Decimal("100.00"),
+        )
+        Order.objects.filter(pk=order.pk).update(paid_at=timezone.now() - timedelta(hours=2))
+        for pid in products:
+            OrderItem.objects.create(order=order, product_id=pid, quantity=1, price=Decimal("50.00"))
+        return order
+
+    def _run(self, *args):
+        from django.core.management import call_command
+        call_command("cancel_stuck_orders", *args, stdout=mock.Mock())
+
+    @mock.patch("orders.order_service.reserve_stock", return_value=INVENTORY_OK)  # 409 replay: already reserved
+    def test_paid_order_holding_its_reserve_stays(self, reserve, release, refund):
+        order = self._paid()
+        self._run()
+        order.refresh_from_db()
+        self.assertEqual((order.status, order.payment_status), (Order.PAID, Order.PAYMENT_PAID))
+        self.assertEqual(reserve.call_args.kwargs["idempotency_key"], f"reserve-{order.id}-7")
+        release.assert_not_called()
+        refund.assert_not_called()
+
+    @mock.patch("orders.order_service.reserve_stock", side_effect=[INVENTORY_OK, (None, "Insufficient available stock")])
+    def test_paid_order_without_a_reserve_is_cancelled_and_refunded(self, reserve, release, refund):
+        order = self._paid(products=(7, 8))
+        self._run()
+        order.refresh_from_db()
+        self.assertEqual((order.status, order.payment_status), (Order.CANCELLED, Order.PAYMENT_REFUNDED))
+        refund.assert_called_once()
+        # Only the line that does hold a reserve gives it back
+        self.assertEqual([c.kwargs["product_id"] for c in release.call_args_list], [7])
+
+    @mock.patch("orders.order_service.reserve_stock", return_value=INVENTORY_OK)
+    def test_orders_without_a_warehouse_and_dry_runs_touch_nothing(self, reserve, release, refund):
+        no_warehouse, stuck = self._paid(warehouse_id=None), self._paid()
+        self._run("--dry-run")
+        self._run()  # no_warehouse: nothing was ever reserved, so nothing to compensate
+        reserve.assert_called_once()
+        self.assertEqual(reserve.call_args.kwargs["reference_id"], str(stuck.id))
+        no_warehouse.refresh_from_db()
+        self.assertEqual(no_warehouse.status, Order.PAID)

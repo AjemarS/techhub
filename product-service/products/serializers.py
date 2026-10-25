@@ -109,9 +109,10 @@ class ProductSerializer(serializers.ModelSerializer):
             "brand", "color", "is_on_sale", "warranty_months",
             "created_at", "updated_at",
         ]
-        # rating and review_count come from reviews only
+        # rating and review_count come from reviews only, stock from the warehouse
         read_only_fields = [
             "slug",
+            "stock",
             "in_stock",
             "is_on_sale",
             "rating",
@@ -164,11 +165,6 @@ class ProductSerializer(serializers.ModelSerializer):
         if not value.strip():
             raise serializers.ValidationError("Product description cannot be blank.")
         return value.strip()
-
-    def validate_stock(self, value):
-        if value < 0:
-            raise serializers.ValidationError("Stock quantity cannot be negative.")
-        return value
 
     def validate_image(self, value):
         return validate_image_file(value)

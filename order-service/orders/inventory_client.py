@@ -16,7 +16,8 @@ def inventory_url(path):
 
 def _build_headers(request=None, idempotency_key=None):
     """Build request headers with gateway user context and optional idempotency key."""
-    headers = {}
+    # A guest or the Stripe webhook has no user to forward: inventory accepts the service token instead
+    headers = {"X-Internal-Token": settings.INTERNAL_SERVICE_TOKEN}
     if idempotency_key:
         headers["Idempotency-Key"] = idempotency_key
     if request:
@@ -125,6 +126,44 @@ def return_stock(product_id, warehouse_id, quantity, reference_type, reference_i
     except requests.RequestException as e:
         logger.error("return_stock failed: product=%s error=%s", product_id, e)
         return None, str(e)
+
+
+def pick_fulfilment_warehouse(items, request=None):
+    """
+    Warehouse that ships a delivery order: DEFAULT_FULFILMENT_WAREHOUSE_ID, else the first active
+    warehouse (type "warehouse", lowest id) holding every item. Returns (warehouse_id, error);
+    (None, None) means no warehouse has it all.
+    """
+    if settings.DEFAULT_FULFILMENT_WAREHOUSE_ID:
+        return int(settings.DEFAULT_FULFILMENT_WAREHOUSE_ID), None
+    headers = _build_headers(request)
+    try:
+        # shortcut: reads the first page only (20 warehouses); follow "next" once there are more
+        resp = _get(inventory_url("warehouses/"), headers)
+        data, error = _parse_response(resp)
+        if error:
+            return None, error
+        warehouses = sorted(
+            w["id"] for w in (data.get("results", data) if isinstance(data, dict) else data)
+            if w["type"] == "warehouse" and w["is_active"]
+        )
+        available = {}
+        for item in items:
+            stock, error = _parse_response(_get(inventory_url("stock/"), headers, {"product_id": item["product_id"]}))
+            if error:
+                return None, error
+            for row in stock:
+                available[(row["warehouse"], row["product_id"])] = row["quantity"] - row["reserved"]
+    except (requests.RequestException, KeyError, TypeError, ValueError) as e:
+        logger.error("pick_fulfilment_warehouse failed: %s", e)
+        return None, str(e)
+    wanted = {}
+    for item in items:
+        wanted[item["product_id"]] = wanted.get(item["product_id"], 0) + item["quantity"]
+    for wid in warehouses:
+        if all(available.get((wid, pid), 0) >= qty for pid, qty in wanted.items()):
+            return wid, None
+    return None, None
 
 
 def check_availability(product_id, warehouse_id, quantity, request=None):

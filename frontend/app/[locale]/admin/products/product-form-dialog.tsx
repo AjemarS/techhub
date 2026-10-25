@@ -219,7 +219,6 @@ export function ProductFormDialog({
   });
   const [price, setPrice] = useState(mode === "edit" ? String(product?.price ?? "") : "");
   const [originalPrice, setOriginalPrice] = useState(mode === "edit" ? String(product?.original_price ?? "") : "");
-  const [stock, setStock] = useState(mode === "edit" ? String(product?.stock ?? "0") : "0");
   const [warrantyMonths, setWarrantyMonths] = useState(mode === "edit" ? String(product?.warranty_months ?? 12) : "12");
   const [features, setFeatures] = useState<string[]>(mode === "edit" ? (product?.features ?? []) : []);
   const [specs, setSpecs] = useState<SpecRow[]>(() => {
@@ -246,7 +245,6 @@ export function ProductFormDialog({
       setCategoryId("");
       setPrice("");
       setOriginalPrice("");
-      setStock("0");
       setWarrantyMonths("12");
       setFeatures([]);
       setSpecs([]);
@@ -284,7 +282,6 @@ export function ProductFormDialog({
     category: parseInt(categoryId, 10),
     price: parseFloat(price),
     original_price: parseFloat(originalPrice),
-    stock: parseInt(stock || "0", 10),
     warranty_months: parseInt(warrantyMonths || "0", 10),
     features,
     specs: specs.reduce<Record<string, string>>((acc, s) => {
@@ -446,10 +443,6 @@ export function ProductFormDialog({
                 </div>
               </div>
 
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="pd-stock" className="text-right">{tf("stock")}</Label>
-                <Input id="pd-stock" type="number" min="0" value={stock} onChange={(e) => setStock(e.target.value)} className="col-span-3" />
-              </div>
             </FormSection>
 
             <FormSection title={tf("sectionMetadata")}>
