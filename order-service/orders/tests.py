@@ -255,7 +255,7 @@ class OrderAPITest(APITestCase):
     def test_my_orders(self):
         user = _create_regular_user()
         self.client.force_authenticate(user=user)
-        _create_order(created_by=str(user.id))
+        _create_order(created_by=user.username)
         _create_order(order_number="ORD-000002", created_by="other_user")
         response = self.client.get("/api/orders/my/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -1318,3 +1318,28 @@ class CancelStuckOrdersTest(TestCase):
         self.assertEqual(reserve.call_args.kwargs["reference_id"], str(stuck.id))
         no_warehouse.refresh_from_db()
         self.assertEqual(no_warehouse.status, Order.PAID)
+
+
+class OwnOrderThroughGatewayTest(APITestCase):
+    """A buyer signed in through the gateway sees and cancels the order they placed (it used to be 403 / empty)."""
+
+    def _as(self, user_id):
+        return {"HTTP_X_GATEWAY_USER_ID": user_id, "HTTP_X_GATEWAY_USER_ROLE": "user", "HTTP_X_GATEWAY_USER_EMAIL": "b@test.com"}
+
+    @_stub_inventory
+    def test_buyer_lists_and_cancels_own_order_but_not_another(self):
+        created = self.client.post("/api/orders/", {
+            "warehouse_id": 1, "customer_email": "b@test.com", "items": [{"product_id": 1, "quantity": 1}],
+        }, format="json", **self._as("buyer-1"))
+        self.assertEqual(created.status_code, status.HTTP_201_CREATED, created.data)
+        order_id = created.data["id"]
+
+        mine = self.client.get("/api/orders/my/", **self._as("buyer-1"))
+        self.assertEqual([o["id"] for o in mine.data["results"]], [order_id])
+        self.assertEqual(self.client.get("/api/orders/my/", **self._as("buyer-2")).data["results"], [])
+
+        self.assertEqual(self.client.post(f"/api/orders/{order_id}/cancel/", **self._as("buyer-2")).status_code,
+                         status.HTTP_403_FORBIDDEN)
+        self.assertEqual(self.client.post(f"/api/orders/{order_id}/cancel/", **self._as("buyer-1")).status_code,
+                         status.HTTP_200_OK)
+        self.assertEqual(Order.objects.get(pk=order_id).status, Order.CANCELLED)

@@ -49,10 +49,8 @@ def _may_pay(order, request):
 
 def _is_order_owner(order, request):
     user = request.user
-    if user.is_staff:
-        return True
-    gateway_id = request.META.get("HTTP_X_GATEWAY_USER_ID", "")
-    return order.created_by in (str(user.id), gateway_id)
+    # created_by holds the buyer's username ("gw_<id>" behind the gateway), as create_order stores it
+    return user.is_staff or order.created_by == user.username
 
 
 def _handle_webhook_expired(order, session):
@@ -145,7 +143,8 @@ class OrderViewSet(viewsets.ModelViewSet):
             return [AllowAny()]
         if self.action == "health":
             return [AllowAny()]
-        if self.action in ("list", "my", "retrieve", "purchased"):
+        # cancel checks the owner itself (_is_order_owner)
+        if self.action in ("list", "my", "retrieve", "purchased", "cancel"):
             return [IsAuthenticated()]
         if self.action == "create":
             return [AllowAny()]
@@ -352,11 +351,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         """Return current user's orders."""
         if not request.user.is_authenticated:
             return Response({"error": "Authentication required"}, status=401)
-        gateway_id = request.META.get("HTTP_X_GATEWAY_USER_ID", "")
-        if gateway_id:
-            orders = Order.objects.filter(created_by=gateway_id).prefetch_related("items")
-        else:
-            orders = Order.objects.filter(created_by=str(request.user.id)).prefetch_related("items")
+        orders = self.filter_queryset(self.get_queryset())  # get_queryset keeps only this user's orders
         page = self.paginate_queryset(orders)
         if page is not None:
             serializer = OrderListSerializer(page, many=True)
