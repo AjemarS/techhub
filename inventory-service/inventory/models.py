@@ -147,6 +147,13 @@ class StockMovement(models.Model):
             models.Index(fields=["created_at"]),
             models.Index(fields=["idempotency_key"]),
         ]
+        constraints = [
+            # One movement per retried request, even when two copies land at once
+            models.UniqueConstraint(
+                fields=["type", "idempotency_key"], condition=~models.Q(idempotency_key=""),
+                name="uniq_movement_type_idempotency_key",
+            ),
+        ]
 
     def __str__(self):
         return f"{self.get_type_display()} | Product {self.product_id} x{self.quantity}"

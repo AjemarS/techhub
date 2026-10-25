@@ -788,3 +788,46 @@ class InternalServiceAccessTest(APITestCase):
     def test_unset_token_never_matches(self):
         response = self.client.post("/api/stock/reserve/", self.body, HTTP_X_INTERNAL_TOKEN="")
         self.assertIn(response.status_code, (401, 403))
+
+
+class IdempotentRetryRaceTest(TransactionTestCase):
+    """A reserve retried after a timeout lands twice at once: it must count once (fix #34)."""
+
+    REQUESTS = 20
+    ROUNDS = 5
+
+    def setUp(self):
+        self.admin = _create_admin_user()
+        self.warehouse = _create_warehouse()
+
+    def _reserve(self, key):
+        try:
+            client = APIClient()
+            client.force_authenticate(user=self.admin)
+            return client.post("/api/stock/reserve/", {
+                "product_id": 1, "warehouse_id": self.warehouse.pk, "quantity": 1, "idempotency_key": key,
+            }).status_code
+        finally:
+            connections.close_all()
+
+    def test_same_key_at_once_moves_stock_once(self):
+        for rnd in range(self.ROUNDS):
+            cache.clear()
+            Stock.objects.filter(product_id=1).delete()
+            stock = _create_stock(product_id=1, warehouse=self.warehouse, quantity=50)
+            key = f"reserve-retry-{rnd}"
+            with ThreadPoolExecutor(max_workers=self.REQUESTS) as pool:
+                codes = list(pool.map(self._reserve, [key] * self.REQUESTS))
+            stock.refresh_from_db()
+            self.assertEqual(StockMovement.objects.filter(idempotency_key=key).count(), 1, f"round {rnd}")
+            self.assertEqual(stock.reserved, 1, f"round {rnd}: {codes}")
+            self.assertEqual(codes.count(status.HTTP_200_OK), 1, f"round {rnd}: {codes}")
+
+    def test_database_refuses_a_second_movement_with_the_same_key(self):
+        stock = _create_stock(product_id=1, warehouse=self.warehouse, quantity=5)
+        fields = {"product_id": 1, "from_warehouse": stock.warehouse, "quantity": 1, "type": StockMovement.RESERVE}
+        StockMovement.objects.create(idempotency_key="k", **fields)
+        StockMovement.objects.create(idempotency_key="", **fields)
+        StockMovement.objects.create(idempotency_key="", **fields)  # unkeyed movements never clash
+        with self.assertRaises(IntegrityError):
+            StockMovement.objects.create(idempotency_key="k", **fields)
