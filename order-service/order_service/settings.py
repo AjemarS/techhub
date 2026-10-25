@@ -103,6 +103,10 @@ AUDIT_SERVICE_URL = os.environ.get(
 PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "http://localhost")
 
 from shared_auth.settings_base import BASE_REST_FRAMEWORK, BASE_SPECTACULAR_SETTINGS
+from shared_auth.cache import redis_caches
+
+# Throttle counters and cached data shared by all workers (Redis database 3)
+CACHES = redis_caches(3)
 
 REST_FRAMEWORK = {
     **BASE_REST_FRAMEWORK,

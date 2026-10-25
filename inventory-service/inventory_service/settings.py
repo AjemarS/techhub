@@ -87,6 +87,10 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 from shared_auth.settings_base import BASE_REST_FRAMEWORK, BASE_SPECTACULAR_SETTINGS
+from shared_auth.cache import redis_caches
+
+# Throttle counters and cached data shared by all workers (Redis database 2)
+CACHES = redis_caches(2)
 
 REST_FRAMEWORK = {**BASE_REST_FRAMEWORK}
 

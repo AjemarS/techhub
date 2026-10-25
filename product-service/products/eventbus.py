@@ -10,6 +10,7 @@ from shared_eventbus.consumer import dedup_check, dedup_claim
 from shared_eventbus.consumer import start_consumer as shared_start_consumer
 from shared_eventbus.publisher import publish_event
 
+from . import catalog_cache
 from .models import ProcessedEvent, Product
 
 logger = logging.getLogger(__name__)
@@ -41,6 +42,7 @@ def _adjust_stock(product_id, delta):
         Product.objects.filter(pk=product_id).update(stock=Greatest(F("stock") + delta, Value(0)))
         Product.objects.filter(pk=product_id, stock__gt=0).update(in_stock=True)
         zeroed = Product.objects.filter(pk=product_id, stock=0).update(in_stock=False)
+    catalog_cache.bump()
     if zeroed:
         publish_event(
             "inventory.stock.critical",
