@@ -69,6 +69,17 @@ describe("POST /auth/sign-in/email (rate limiter intercept)", () => {
     expect(res.status).toBe(429);
     expect(res.body.message).toContain("temporarily unavailable");
   });
+
+  it("counts attempts per client IP behind the proxies, not per gateway", async () => {
+    mockCheckRateLimit.mockResolvedValue({ allowed: true });
+    mockGetSession.mockResolvedValue(null);
+
+    // a client-supplied first entry is ignored; the gateway hop (private) is skipped
+    await request(app).post("/auth/sign-in/email")
+      .set("X-Forwarded-For", "198.51.100.7, 203.0.113.5, 172.18.0.1")
+      .send({ email: "test@test.com", password: "password123" });
+    expect(mockCheckRateLimit).toHaveBeenCalledWith("203.0.113.5");
+  });
 });
 
 describe("POST /auth/sessions/revoke", () => {

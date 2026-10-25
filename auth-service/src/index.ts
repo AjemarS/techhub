@@ -47,6 +47,9 @@ validateEnv();
 
 export function createApp() {
   const app = express();
+  // req.ip = the rightmost X-Forwarded-For address outside private networks (Caddy, the nginx gateway):
+  // without it every request came from the gateway and all users shared one login lockout counter
+  app.set("trust proxy", "loopback, linklocal, uniquelocal");
   app.use(metricsMiddleware);
   app.get("/metrics", metricsHandler);
 
