@@ -68,6 +68,8 @@ services:
     ports: !reset []
     environment:
       DEBUG: "False"
+      # Reserve and stock checks for every order wait on row locks and the database, not the CPU
+      WEB_CONCURRENCY: "4"
     # the image CMD: migrate, collectstatic, gunicorn (WEB_CONCURRENCY workers, 2 by default)
     command: !reset null
     healthcheck:
