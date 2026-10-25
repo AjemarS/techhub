@@ -63,11 +63,11 @@ class ProductSerializerTest(TestCase):
         self.assertFalse(serializer.is_valid())
         self.assertIn("description", serializer.errors)
 
-    def test_negative_stock(self):
-        payload = {**self.valid_payload, "stock": -5}
+    def test_stock_cannot_be_set_directly(self):
+        payload = {**self.valid_payload, "stock": 500}
         serializer = ProductSerializer(data=payload)
-        self.assertFalse(serializer.is_valid())
-        self.assertIn("stock", serializer.errors)
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        self.assertNotIn("stock", serializer.validated_data)
 
     def test_rating_cannot_be_set_directly(self):
         # It is the average of reviews: a client-sent value is ignored

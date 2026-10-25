@@ -1,7 +1,6 @@
 import logging
 
-from django.db import connection, transaction
-from django.db.models import F
+from django.db import connection
 from django.shortcuts import get_object_or_404
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, status, viewsets
@@ -9,7 +8,6 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
-from shared_eventbus.publisher import publish_event
 
 from .filters import ProductFilter
 from .models import Category, Product
@@ -25,7 +23,6 @@ class ProductViewSet(viewsets.ModelViewSet):
 
     list/retrieve: open (read-only)
     create/update/destroy: requires authentication + admin role
-    update_stock: requires authentication + admin role
     """
 
     queryset = Product.objects.select_related("category").all()
@@ -161,62 +158,6 @@ class ProductViewSet(viewsets.ModelViewSet):
             .exclude(pk=product.pk)[:8]
         )
         serializer = ProductListSerializer(similar, many=True, context={"request": request})
-        return Response(serializer.data)
-
-    @action(detail=True, methods=["post"])
-    def update_stock(self, request, pk=None):
-        """
-        Atomically adjust product stock by `quantity` (positive = restock,
-        negative = deduct). Uses database-level F() expression + select_for_update
-        to eliminate the read-modify-write race condition.
-        """
-        product = self.get_object()
-        raw_quantity = request.data.get("quantity")
-
-        if raw_quantity is None:
-            raise ValidationError({"quantity": "This field is required."})
-
-        try:
-            quantity = int(raw_quantity)
-        except (TypeError, ValueError) as e:
-            raise ValidationError({"quantity": "Must be an integer."}) from e
-
-        with transaction.atomic():
-            # Lock the row for the duration of this transaction
-            product = Product.objects.select_for_update().get(pk=product.pk)
-
-            new_stock = product.stock + quantity
-            if new_stock < 0:
-                return Response(
-                    {"error": "Insufficient stock."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-            # Use F() for the atomic DB-level update (race-condition safe)
-            Product.objects.filter(pk=product.pk).update(stock=F("stock") + quantity)
-            product.refresh_from_db()
-
-            if product.stock == 0:
-                from uuid import uuid4
-
-                publish_event(
-                    "inventory.stock.critical",
-                    {
-                        "event_id": str(uuid4()),
-                        "product_id": product.pk,
-                        "stock": 0,
-                    },
-                )
-
-            logger.info(
-                "Stock updated | id=%s delta=%+d new_stock=%d user=%s",
-                product.pk,
-                quantity,
-                product.stock,
-                request.user,
-            )
-
-        serializer = self.get_serializer(product)
         return Response(serializer.data)
 
 

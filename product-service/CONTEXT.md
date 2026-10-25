@@ -31,7 +31,7 @@ python manage.py test
 
 #### Viewsets
 - `CategoryViewSet` — CRUD, locale-aware list/detail
-- `ProductViewSet` — CRUD, filtering (`DjangoFilterBackend`), search, ordering, locale-aware. Custom `@action update_stock` for inventory-service callback.
+- `ProductViewSet` — CRUD, filtering (`DjangoFilterBackend`), search, ordering, locale-aware. `stock` is read-only: it follows inventory events and the hourly `reconcile_stock`.
 - `CartViewSet` — list, add_item (`POST`), remove_item, merge. `authentication_classes = []` (anonymous writes).
 
 ## API Endpoints
