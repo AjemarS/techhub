@@ -418,7 +418,11 @@ services:
       - "127.0.0.1:15672:15672"
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
-      interval: 15s
+      # Each check boots an Erlang VM (a ~55 % CPU spike for a second or two): every 5 s while starting,
+      # so dependants start quickly, then once a minute
+      interval: 60s
+      start_period: 60s
+      start_interval: 5s
       timeout: 10s
       retries: 5
     networks:
