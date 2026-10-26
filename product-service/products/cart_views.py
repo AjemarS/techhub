@@ -1,8 +1,11 @@
+import uuid
+
 from django.db import transaction
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
@@ -18,11 +21,22 @@ class CartViewSet(viewsets.ViewSet):
 
     MAX_QUANTITY = 999
 
+    @staticmethod
+    def _session_id(request):
+        """The client's X-Session-Id: a UUID, or a 400 (it used to hit the UUID column and 500)."""
+        raw = request.META.get("HTTP_X_SESSION_ID")
+        if not raw:
+            return None
+        try:
+            return str(uuid.UUID(raw))
+        except ValueError:
+            raise ValidationError({"X-Session-Id": "Must be a UUID."}) from None
+
     def _get_or_create_cart(self, request):
         from django.db import IntegrityError
 
         user_id = request.META.get("HTTP_X_GATEWAY_USER_ID")
-        session_id = request.META.get("HTTP_X_SESSION_ID")
+        session_id = self._session_id(request)
 
         if user_id:
             with transaction.atomic():
@@ -203,7 +217,7 @@ class CartViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=["post"])
     def merge(self, request):
-        session_id = request.META.get("HTTP_X_SESSION_ID")
+        session_id = self._session_id(request)
         user_id = request.META.get("HTTP_X_GATEWAY_USER_ID")
 
         if not user_id or not session_id:

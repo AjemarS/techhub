@@ -6,6 +6,7 @@ import { CategoryImage } from "~/ui/components/category-image";
 import { NewArrivalsCartWrapper } from "~/ui/components/new-arrivals-cart-wrapper";
 
 import { Category, Product } from "../../lib/types";
+import { catalogFetch } from "~/lib/api/catalog-server";
 
 const API_URL = process.env.API_SERVICE_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost/api";
 // shortcut: the advertised code is fixed here; move it to a setting once admins pick featured codes
@@ -14,7 +15,7 @@ const HOME_PROMO = "WELCOME10";
 // null = the catalog could not be reached (shown to the visitor), [] = it is simply empty
 async function getList<T>(path: string, lang: string): Promise<T[] | null> {
   try {
-    const response = await fetch(`${API_URL}${path}`, { headers: { "Accept-Language": lang }, next: { revalidate: 60 } });
+    const response = await catalogFetch(path, { headers: { "Accept-Language": lang }, next: { revalidate: 60 } });
     if (!response.ok) return null;
     const data = await response.json();
     return data.results || data;

@@ -8,8 +8,9 @@ BASE_REST_FRAMEWORK = {
         "rest_framework.permissions.IsAuthenticatedOrReadOnly",
     ],
     "DEFAULT_THROTTLE_CLASSES": [
-        "rest_framework.throttling.AnonRateThrottle",
-        "rest_framework.throttling.UserRateThrottle",
+        # DRF's own, except that other TechHub services (X-Internal-Token) are not throttled
+        "shared_auth.throttling.AnonRateThrottle",
+        "shared_auth.throttling.UserRateThrottle",
     ],
     "DEFAULT_THROTTLE_RATES": {
         # Counted in Redis, so all workers share one budget per client; it used to be 60 per worker,
