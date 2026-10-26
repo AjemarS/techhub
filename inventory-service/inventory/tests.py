@@ -831,3 +831,20 @@ class IdempotentRetryRaceTest(TransactionTestCase):
         StockMovement.objects.create(idempotency_key="", **fields)  # unkeyed movements never clash
         with self.assertRaises(IntegrityError):
             StockMovement.objects.create(idempotency_key="k", **fields)
+
+
+@override_settings(ALLOWED_HOSTS=["shop.example"])
+class PublicLinksTest(APITestCase):
+    """The gateway serves inventory at /api/inventory/ and forwards /api/: links carry the public prefix."""
+
+    def test_next_link_has_public_host_scheme_and_prefix(self):
+        for i in range(21):
+            _create_warehouse(name=f"W{i:02d}")
+        response = self.client.get(
+            "/api/warehouses/", HTTP_X_FORWARDED_HOST="shop.example", HTTP_X_FORWARDED_PROTO="https",
+            HTTP_X_FORWARDED_PREFIX="/api/inventory",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(
+            response.data["next"].startswith("https://shop.example/api/inventory/warehouses/?"), response.data["next"],
+        )

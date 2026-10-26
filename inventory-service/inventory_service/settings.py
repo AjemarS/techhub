@@ -11,6 +11,9 @@ if not SECRET_KEY:
 
 DEBUG = os.environ.get("DEBUG", "False") == "True"
 ALLOWED_HOSTS = [h.strip() for h in os.environ.get("ALLOWED_HOSTS", "localhost").split(",")]
+# Behind the gateway: absolute links (pagination) use the public host and scheme
+USE_X_FORWARDED_HOST = True
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -29,6 +32,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "shared_metrics.PrometheusMiddleware",
     "shared_auth.audit_middleware.AuditMiddleware",
+    "shared_auth.forwarded.ForwardedPrefixMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",

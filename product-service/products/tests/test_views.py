@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from django.test import override_settings
 from rest_framework import status
 from rest_framework.test import APIClient, APITestCase
 
@@ -263,3 +264,18 @@ class CategoryChildrenTest(APITestCase):
         parent = Category.objects.create(name="Leaf")
         response = self.client.get(f"/api/categories/{parent.pk}/")
         self.assertEqual(response.data["children"], [])
+
+
+@override_settings(ALLOWED_HOSTS=["shop.example"])
+class PublicLinksTest(APITestCase):
+    """Pagination links name the public host and scheme the gateway saw, not the internal one."""
+
+    def test_next_link_uses_forwarded_host_and_scheme(self):
+        category = _create_category()
+        for i in range(21):
+            _create_product(name=f"P{i}", category=category)
+        response = self.client.get(
+            "/api/products/", HTTP_X_FORWARDED_HOST="shop.example", HTTP_X_FORWARDED_PROTO="https",
+        )
+        link = response.data["next"]
+        self.assertTrue(link.startswith("https://shop.example/api/products/?"), link)
