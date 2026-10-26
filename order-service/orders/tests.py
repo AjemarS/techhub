@@ -34,7 +34,6 @@ _availability_patch = mock.patch("orders.serializers.check_availability", return
 
 def _stub_inventory(target):
     """For tests about orders rather than stock: every inventory call succeeds (a test class or method)."""
-    target = mock.patch("orders.views.check_availability", new=mock.Mock(return_value=(True, None)))(target)
     for name in ("reserve_stock", "release_stock", "deduct_stock_batch", "return_stock"):
         target = mock.patch(f"orders.order_service.{name}", new=mock.Mock(return_value=INVENTORY_OK))(target)
     return target
@@ -189,8 +188,7 @@ class OrderAPITest(APITestCase):
 
     @mock.patch("orders.order_service.reserve_stock", return_value=INVENTORY_OK)
     @mock.patch("orders.serializers.check_availability", return_value=(True, None))
-    @mock.patch("orders.views.check_availability", return_value=(True, None))
-    def test_create_order_with_warehouse(self, _check_view, _check_serializer, reserve):
+    def test_create_order_with_warehouse(self, _check_serializer, reserve):
         """Order with warehouse_id reserves every item."""
         user = _create_admin_user()
         self.client.force_authenticate(user=user)
@@ -786,8 +784,7 @@ class ReserveFailureCancellationTest(APITestCase):
     @mock.patch("orders.order_service.release_stock", return_value=INVENTORY_OK)
     @mock.patch("orders.order_service.reserve_stock", side_effect=[INVENTORY_OK, (None, "Insufficient available stock")])
     @mock.patch("orders.serializers.check_availability", return_value=(True, None))
-    @mock.patch("orders.views.check_availability", return_value=(True, None))
-    def test_failed_reserve_publishes_order_cancelled(self, _cv, _cs, _reserve, svc_release, view_release, publish):
+    def test_failed_reserve_publishes_order_cancelled(self, _cs, _reserve, svc_release, view_release, publish):
         with self.captureOnCommitCallbacks(execute=True):
             response = self.client.post("/api/orders/", {
                 "warehouse_id": 1, "customer_name": "John", "customer_email": "john@test.com",
@@ -1084,10 +1081,9 @@ class PayPermissionTest(APITestCase):
     """Only the buyer can start a Stripe checkout for an order (it used to be admin-only, so nobody could pay)."""
 
     def _create(self):
-        with mock.patch("orders.views.check_availability", return_value=(True, None)):
-            return self.client.post("/api/orders/", {
-                "customer_email": "g@test.com", "warehouse_id": 1, "items": [{"product_id": 1, "quantity": 1}],
-            }, format="json").data
+        return self.client.post("/api/orders/", {
+            "customer_email": "g@test.com", "warehouse_id": 1, "items": [{"product_id": 1, "quantity": 1}],
+        }, format="json").data
 
     @mock.patch("orders.views.stripe.checkout.Session.create", return_value=mock.Mock(id="cs_1", url="https://stripe.test/cs_1"))
     def test_guest_pays_with_the_token_from_create(self, _session):
@@ -1194,7 +1190,6 @@ class InternalTokenHeaderTest(TestCase):
         self.assertEqual(post.call_args.args[2]["X-Internal-Token"], "s3cret")
 
 
-@mock.patch("orders.views.check_availability", new=mock.Mock(return_value=(True, None)))
 @mock.patch("orders.order_service.release_stock", return_value=INVENTORY_OK)
 @mock.patch("orders.order_service.deduct_stock_batch", return_value=INVENTORY_OK)
 @mock.patch("orders.order_service.reserve_stock", return_value=INVENTORY_OK)
@@ -1343,3 +1338,25 @@ class OwnOrderThroughGatewayTest(APITestCase):
         self.assertEqual(self.client.post(f"/api/orders/{order_id}/cancel/", **self._as("buyer-1")).status_code,
                          status.HTTP_200_OK)
         self.assertEqual(Order.objects.get(pk=order_id).status, Order.CANCELLED)
+
+
+class StockCheckOutageTest(APITestCase):
+    """With one stock check left, an inventory outage still refuses the order before it is created."""
+
+    @_stub_inventory
+    def test_unavailable_inventory_refuses_the_order(self):
+        with mock.patch("orders.serializers.check_availability", return_value=(None, "connection refused")):
+            response = self.client.post("/api/orders/", {
+                "warehouse_id": 1, "customer_email": "g@test.com", "items": [{"product_id": 1, "quantity": 1}],
+            }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
+        self.assertFalse(Order.objects.exists())
+
+    @_stub_inventory
+    def test_each_item_is_checked_once(self):
+        with mock.patch("orders.serializers.check_availability", return_value=(True, None)) as check:
+            self.client.post("/api/orders/", {
+                "warehouse_id": 1, "customer_email": "g@test.com",
+                "items": [{"product_id": 1, "quantity": 1}, {"product_id": 2, "quantity": 1}],
+            }, format="json")
+        self.assertEqual(check.call_count, 2)
