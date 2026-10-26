@@ -33,6 +33,7 @@ disable_error_code = ["attr-defined", "arg-type"]
 module = [
     "rest_framework.*",
     "django_filters.*",
+    "pika.*",
     "django.*",
     "drf_spectacular.*",
     "shared_auth.*",
