@@ -5,7 +5,7 @@ from django.db import IntegrityError, transaction
 from django.db.models import F, Value
 from django.db.models.functions import Greatest
 from django.utils import timezone
-from shared_eventbus.connection import ensure_exchange, get_connection
+from shared_eventbus.connection import ensure_exchange
 from shared_eventbus.consumer import dedup_check, dedup_claim
 from shared_eventbus.consumer import start_consumer as shared_start_consumer
 from shared_eventbus.publisher import publish_event
@@ -86,11 +86,10 @@ def setup_bindings(channel):
 
 
 def start_consumer():
-    conn = get_connection()
-    setup_bindings(conn.channel())
     # Purge ProcessedEvent records older than 7 days on startup
     cutoff = timezone.now() - timedelta(days=7)
     purged, _ = ProcessedEvent.objects.filter(processed_at__lt=cutoff).delete()
     if purged:
         logger.info("Purged %d stale ProcessedEvent records", purged)
-    shared_start_consumer(QUEUE_MAP, "Product")
+    # Bindings are declared on every (re)connect: the consumer survives RabbitMQ going away
+    shared_start_consumer(QUEUE_MAP, "Product", setup=setup_bindings)
