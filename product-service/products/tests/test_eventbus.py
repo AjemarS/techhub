@@ -93,8 +93,7 @@ class GoodsReceiptRoutingTest(TestCase):
         )
         channel = FakeChannel()
         conn = mock.Mock(channel=lambda: channel)
-        with mock.patch("products.eventbus.get_connection", return_value=conn), \
-                mock.patch("shared_eventbus.consumer.get_connection", return_value=conn):
+        with mock.patch("shared_eventbus.consumer.get_connection", return_value=conn):
             start_consumer()
 
         channel.publish(
@@ -135,3 +134,43 @@ class ReconcileStockTest(TestCase):
             product.refresh_from_db()
             self.assertEqual(product.stock, stock)
         self.assertIn("stock_reconcile_fixed 1", out.getvalue())
+
+
+class ConsumerReconnectTest(TestCase):
+    """When RabbitMQ is gone or not up yet the consumer reconnects instead of exiting."""
+
+    def _run(self, connections):
+        from pika.exceptions import AMQPConnectionError, StreamLostError
+
+        channel = FakeChannel()
+        lost = mock.Mock()
+        lost.channel.return_value.start_consuming.side_effect = StreamLostError("broker gone")
+        ok = mock.Mock(channel=lambda: channel)
+        import socket
+
+        by_name = {
+            "down": AMQPConnectionError("refused"),
+            "dns": socket.gaierror(-2, "Name or service not known"),
+            "lost": lost,
+            "ok": ok,
+        }
+        side_effect = [by_name[c] for c in connections]
+        get = mock.patch("shared_eventbus.consumer.get_connection", side_effect=side_effect)
+        sleep = mock.patch("shared_eventbus.consumer.time.sleep")
+        with get as get_mock, sleep as sleep_mock:
+            start_consumer()
+        return get_mock, sleep_mock, channel
+
+    def test_waits_for_a_broker_that_is_not_up_yet(self):
+        # A stopped broker container: first its name does not resolve, then it refuses connections
+        get, sleep, channel = self._run(["dns", "down", "ok"])
+        self.assertEqual(get.call_count, 3)
+        self.assertEqual([c.args[0] for c in sleep.call_args_list], [1, 2])  # backoff
+        self.assertIn("product.stock.sync", channel.consumers)
+        self.assertEqual(channel.bindings["inventory.stock.changed"], ["product.stock.sync"])
+
+    def test_reconnects_and_rebinds_after_losing_the_broker(self):
+        get, _, channel = self._run(["lost", "ok"])
+        self.assertEqual(get.call_count, 2)
+        # Bindings are declared again on the new connection, in case the broker lost them
+        self.assertEqual(channel.bindings["inventory.stock.changed"], ["product.stock.sync"])
