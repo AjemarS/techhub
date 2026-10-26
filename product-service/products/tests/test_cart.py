@@ -275,3 +275,14 @@ class CartAPITest(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data["items"]), 0)
+
+
+class CartSessionIdTest(APITestCase):
+    """X-Session-Id comes from the client: a value that is not a UUID is a 400, never a 500."""
+
+    def test_malformed_session_id_is_rejected(self):
+        for path in ("/api/cart/", "/api/cart/add_item/", "/api/cart/merge/"):
+            method = self.client.get if path == "/api/cart/" else self.client.post
+            response = method(path, {"product_id": 1, "quantity": 1}, format="json",
+                              HTTP_X_SESSION_ID="k7-rbac-session", HTTP_X_GATEWAY_USER_ID="u1")
+            self.assertEqual(response.status_code, 400, path)
