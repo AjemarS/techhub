@@ -153,6 +153,12 @@ jobs:
   test-frontend:
     runs-on: ubuntu-24.04
     needs: [lint-frontend]
+    # Browsers and their system libraries come with the image: `playwright install --with-deps` took up to
+    # 46 min when apt mirrors were slow. Same image the visual baselines are made in (AGENTS.md); keep its
+    # tag in step with @playwright/test in frontend/package-lock.json.
+    container:
+      image: mcr.microsoft.com/playwright:v1.61.0-noble
+      options: --user 1001
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -161,8 +167,6 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
-        working-directory: frontend
-      - run: npx playwright install --with-deps
         working-directory: frontend
       - run: npx playwright test
         working-directory: frontend
