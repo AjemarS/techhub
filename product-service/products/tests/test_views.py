@@ -1,4 +1,5 @@
 from decimal import Decimal
+from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.test import override_settings
@@ -279,3 +280,26 @@ class PublicLinksTest(APITestCase):
         )
         link = response.data["next"]
         self.assertTrue(link.startswith("https://shop.example/api/products/?"), link)
+
+
+@override_settings(INTERNAL_SERVICE_TOKEN="s3cret")
+class InternalServiceThrottleTest(APITestCase):
+    """Server-side rendering calls from one address for all visitors: its token is not throttled."""
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+        self.rates = mock.patch("rest_framework.throttling.SimpleRateThrottle.THROTTLE_RATES",
+                                {"anon": "2/minute", "user": "2/minute"})
+        self.rates.start()
+        self.addCleanup(self.rates.stop)
+
+    def _codes(self, n, **headers):
+        return [self.client.get("/api/categories/", **headers).status_code for _ in range(n)]
+
+    def test_anonymous_client_is_throttled(self):
+        self.assertEqual(self._codes(3), [200, 200, 429])
+
+    def test_service_token_is_not_throttled_but_a_wrong_one_is(self):
+        self.assertEqual(self._codes(5, HTTP_X_INTERNAL_TOKEN="s3cret"), [200] * 5)
+        self.assertEqual(self._codes(3, HTTP_X_INTERNAL_TOKEN="guess"), [200, 200, 429])

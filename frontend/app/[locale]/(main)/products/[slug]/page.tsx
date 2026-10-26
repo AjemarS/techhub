@@ -2,12 +2,11 @@ import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import ProductDetailClient from "./page-client"
 import { ProductDetail } from "~/lib/types";
-
-const API_URL = process.env.API_SERVICE_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost/api";
+import { catalogFetch } from "~/lib/api/catalog-server";
 
 async function getProduct(slug: string, lang: string): Promise<ProductDetail | null> {
   try {
-    const response = await fetch(`${API_URL}/products/${slug}/`, {
+    const response = await catalogFetch(`/products/${slug}/`, {
       headers: { "Accept-Language": lang },
       next: { revalidate: 30 },
     });

@@ -3,14 +3,14 @@ import { getLocale } from "next-intl/server";
 
 import { Link } from "~/i18n/navigation";
 import type { Category } from "~/lib/types";
+import { catalogFetch } from "~/lib/api/catalog-server";
 
 import { cn } from "~/lib/cn";
 
 /** The real catalog's first categories; an unreachable catalog just leaves "All products" */
 async function getFooterCategories(locale: string): Promise<Category[]> {
   try {
-    const apiUrl = process.env.API_SERVICE_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost/api";
-    const res = await fetch(`${apiUrl}/categories/`, {
+    const res = await catalogFetch("/categories/", {
       headers: { "Accept-Language": locale === "en" ? "en" : "uk" },
       next: { revalidate: 300 },
     });

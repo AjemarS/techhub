@@ -113,6 +113,7 @@ services:
     container_name: product_service
     restart: unless-stopped
     environment:
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN}
       REDIS_URL: redis://redis:6379
       DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@products_db:5432/${PRODUCTS_DB_NAME:-products_db}
       DB_NAME: ${PRODUCTS_DB_NAME:-products_db}
@@ -390,6 +391,9 @@ services:
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
       - NEXT_PUBLIC_AUTH_URL=${NEXT_PUBLIC_AUTH_URL}
       - API_SERVICE_URL=${API_GATEWAY_URL:-http://gateway:8080/api}
+      # Server-side catalog reads go straight to product-service with the service token (not throttled)
+      - CATALOG_SERVICE_URL=http://product-service:8000/api
+      - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN}
       - PROXY_AUTH_URL=${PROXY_AUTH_URL}
     volumes:
       - ./frontend:/app
